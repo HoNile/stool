@@ -66,8 +66,8 @@ type ItemData = String;
 #[derive(Debug, Clone, Data, Lens)]
 struct AppData {
     items: Arc<Vec<ItemData>>,
-    port_name: String,
-    baud_rate: String,
+    port_name: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
+    baud_rate: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
     data_bits: DruidDataBits,
     flow_control: DruidFlowControl,
     parity: DruidParity,
@@ -225,6 +225,40 @@ fn main() {
         let mut settings = SerialPortSettings::default();
         // Create the runtime
         let mut async_rt = Runtime::new().unwrap();
+
+        /*
+        TODO communication with async runtime should be something like this
+        let mut is_open = false;
+        loop {
+         if let Ok(gui_msg) = receiver.recv() {
+            Open => {
+               if !is_open {
+                  is_open = true;
+                  async_rt.block_on(async_serial::serial_loop(
+                     &event_sink,
+                     &settings,
+                     name,
+                     gui_settings.6.clone(),
+                  ));
+               }
+            },
+            Close => {
+               async_rt.spawn(async_serial::close());
+               is_open = false;
+            },
+            UpdateProtocol => {
+               async_rt.spawn(async_serial::update_protocol());
+            },
+            Write => {
+               async_rt.spawn(async_serial::write());
+            },
+            Shutdown => {
+               async_rt.spawn(async_serial::shutdown());
+               break;
+            }
+         }
+        }
+        */
 
         if let Ok(gui_settings) = receiver.recv() {
             let name = gui_settings.0.as_str();
