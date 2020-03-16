@@ -1,0 +1,17 @@
+[package]
+name = "stool"
+version = "0.1.0"
+authors = ["HoNile <nicolas_cohen@hotmail.fr>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+druid = { git = "https://github.com/xi-editor/druid.git", branch = "master" }
+hex = "0.3.2"
+tokio = { version = "0.2.0", features = ["io-driver", "macros"], default-features = false }
+futures = "0.3.1"
+tokio-util = { version = "0.2.0", features = ["codec"], default-features = false }
+bytes = "0.5"
+tokio-serial = "4.3.3"
+serialport = "3.3.0"
