@@ -1,9 +1,11 @@
 use bytes::{BufMut, BytesMut};
 use druid::{ExtEventSink, Selector};
 use futures::stream::StreamExt;
-use std::{io::Error, slice, thread, time::Duration};
+use std::{io::Error, str};
 use tokio_serial::{Serial, SerialPortSettings};
 use tokio_util::codec::{Decoder, Encoder};
+
+use crate::Protocol;
 
 pub const ADD_ITEM: Selector = Selector::new("event.add-item");
 
@@ -41,33 +43,33 @@ impl Encoder for RawCodec {
     }
 }
 
-pub async fn serial_loop(event_sink: &ExtEventSink, settings: &SerialPortSettings, name: &str) {
-    // TODO remove begin test
-    let test: Vec<u8> = vec![
-        0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x10,
-        0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x10, 0xA5,
-        0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x10, 0xA5, 0x25,
-        0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x10, 0xA5, 0x25, 0x00,
-        0x09, 0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x10, 0xA5, 0x25, 0x00, 0x09,
-        0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x10, 0xA5, 0x25, 0x00, 0x09, 0x10,
-        0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5, 0x25, 0x00, 0x10, 0xA5, 0x25, 0x00, 0x09, 0x10, 0xA5,
-    ];
-    for data in test.iter() {
-        event_sink
-            .submit_command(ADD_ITEM, hex::encode_upper(slice::from_ref(data)), None)
-            .unwrap();
-        thread::sleep(Duration::from_millis(10));
-    }
-    // end test
-
+pub async fn serial_loop(
+    event_sink: &ExtEventSink,
+    settings: &SerialPortSettings,
+    name: &str,
+    protocol: Protocol,
+) {
     if let Ok(port) = Serial::from_path(name, &settings) {
         let mut reader = RawCodec::new().framed(port);
 
         while let Some(data) = reader.next().await {
             if let Ok(data) = data {
-                event_sink
-                    .submit_command(ADD_ITEM, hex::encode_upper(data), None)
-                    .unwrap();
+                match protocol {
+                    Protocol::Raw => {
+                        event_sink
+                            .submit_command(ADD_ITEM, hex::encode_upper(data), None)
+                            .unwrap();
+                    }
+                    Protocol::Lines => {
+                        let to_send = match str::from_utf8(&data[..]) {
+                            Ok(data) => data,
+                            Err(_) => "?",
+                        };
+                        event_sink
+                            .submit_command(ADD_ITEM, to_send.to_string(), None)
+                            .unwrap();
+                    }
+                }
             } else {
                 break;
             }

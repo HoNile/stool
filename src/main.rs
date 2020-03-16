@@ -2,7 +2,7 @@ mod async_serial;
 
 use async_serial::ADD_ITEM;
 use druid::widget::{
-    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, TextBox, WidgetExt, SizedBox
+    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox, TextBox, WidgetExt,
 };
 use druid::{
     AppLauncher, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, Lens,
@@ -11,6 +11,7 @@ use druid::{
 };
 use serialport;
 use std::{
+    str,
     sync::{
         mpsc::{channel, Sender},
         Arc,
@@ -21,6 +22,12 @@ use tokio::runtime::Runtime;
 use tokio_serial::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
 
 const OPEN_PORT: Selector = Selector::new("event.open-port");
+
+#[derive(Debug, Clone, Copy, PartialEq, Data)]
+pub enum Protocol {
+    Lines,
+    Raw,
+}
 
 // FIXME should probably not be done like this
 #[derive(Debug, Clone, Copy, PartialEq, Data)]
@@ -65,6 +72,7 @@ struct AppData {
     flow_control: DruidFlowControl,
     parity: DruidParity,
     stop_bits: DruidStopBits,
+    protocol: Protocol,
     sender: Arc<
         Sender<(
             String,
@@ -73,6 +81,7 @@ struct AppData {
             DruidFlowControl,
             DruidParity,
             DruidStopBits,
+            Protocol,
         )>,
     >,
 }
@@ -94,14 +103,68 @@ impl Widget<AppData> for EventHandler {
                 }
 
                 // Update last item until it grow to a certain size then add a new one
-                let items_idx = items.len() - 1;
-                let str_len = items[items_idx].len();
-                items[items_idx].insert_str(str_len, cmd.get_object::<ItemData>().unwrap());
-                let str_len = items[items_idx].len();
-                items[items_idx].insert_str(str_len, " ");
+                let mut items_idx = items.len() - 1;
+                let chunk_size: usize = 45;
 
-                if items[items_idx].len() >= 45 {
-                    items.push("".to_string());
+                match data.protocol {
+                    Protocol::Lines => {
+                        let to_insert = format!(
+                            "{} {}",
+                            items[items_idx],
+                            cmd.get_object::<ItemData>().unwrap()
+                        );
+
+                        for line in to_insert.lines() {
+                            items[items_idx].clear();
+                            items[items_idx].insert_str(0, line);
+                            items.push("".to_string());
+                            items_idx += 1;
+                        }
+                    }
+                    Protocol::Raw => {
+                        let to_insert = format!(
+                            "{} {}",
+                            items[items_idx],
+                            cmd.get_object::<ItemData>()
+                                .unwrap()
+                                .chars()
+                                .enumerate()
+                                .flat_map(|(i, c)| {
+                                    if i != 0 && i % 2 == 0 {
+                                        Some(' ')
+                                    } else {
+                                        None
+                                    }
+                                    .into_iter()
+                                    .chain(std::iter::once(c))
+                                })
+                                .collect::<String>()
+                        );
+
+                        // FIXME should not be done in two run
+                        /*let to_insert = to_insert
+                        .as_bytes()
+                        .chunks(chunk_size)
+                        .map(|buf| unsafe { str::from_utf8_unchecked(buf) }) // I work only with ascii so it's safe and I should not use String for this
+                        .collect::<Vec<&str>>();*/
+                        let to_insert = to_insert
+                            .as_bytes()
+                            .chunks(chunk_size)
+                            .map(|buf| match str::from_utf8(&buf[..]) {
+                                Ok(data) => data,
+                                Err(_) => "?",
+                            })
+                            .collect::<Vec<&str>>();
+
+                        for i in to_insert {
+                            items[items_idx].clear();
+                            items[items_idx].insert_str(0, i);
+                            if i.len() == chunk_size {
+                                items.push("".to_string());
+                                items_idx += 1;
+                            }
+                        }
+                    }
                 }
 
                 ctx.request_layout();
@@ -116,6 +179,7 @@ impl Widget<AppData> for EventHandler {
                     data.flow_control,
                     data.parity,
                     data.stop_bits,
+                    data.protocol,
                 ))
                 .unwrap(),
             _ => (),
@@ -154,6 +218,7 @@ fn main() {
         DruidFlowControl,
         DruidParity,
         DruidStopBits,
+        Protocol,
     )>();
 
     thread::spawn(move || {
@@ -190,7 +255,12 @@ fn main() {
                 DruidStopBits::Two => StopBits::Two,
             };
 
-            async_rt.block_on(async_serial::serial_loop(&event_sink, &settings, name));
+            async_rt.block_on(async_serial::serial_loop(
+                &event_sink,
+                &settings,
+                name,
+                gui_settings.6,
+            ));
         }
     });
 
@@ -204,6 +274,7 @@ fn main() {
             flow_control: DruidFlowControl::None,
             parity: DruidParity::None,
             stop_bits: DruidStopBits::One,
+            protocol: Protocol::Raw,
             sender: Arc::new(sender),
         })
         .expect("launch failed");
@@ -217,13 +288,15 @@ fn make_ui() -> impl Widget<AppData> {
         .collect::<Vec<String>>()
         .join(" ");
 
+    println!("here: {}", list_ports);
+
     let control_panel = Flex::column()
         .with_child(
             Flex::column()
                 .with_child(
                     Label::new("Available ports:")
                         .fix_width(110.0)
-                        .padding(20.0),
+                        .padding((20., 20., 20., 0.)),
                     0.0,
                 )
                 .with_spacer(3.)
@@ -324,6 +397,21 @@ fn make_ui() -> impl Widget<AppData> {
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::stop_bits),
+                    0.0,
+                ),
+            0.0,
+        )
+        .with_spacer(6.)
+        .with_child(
+            Flex::column()
+                .with_child(Label::new("Protocol:"), 0.0)
+                .with_spacer(3.)
+                .with_child(
+                    RadioGroup::new(vec![("Lines", Protocol::Lines), ("Raw", Protocol::Raw)])
+                        .fix_width(110.0)
+                        .border(Color::grey(0.6), 2.0)
+                        .rounded(5.0)
+                        .lens(AppData::protocol),
                     0.0,
                 ),
             0.0,
