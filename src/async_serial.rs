@@ -1,11 +1,14 @@
 use bytes::{BufMut, BytesMut};
 use druid::{ExtEventSink, Selector};
 use futures::stream::StreamExt;
+use std::sync::mpsc::Receiver;
 use std::{io::Error, str};
-use tokio_serial::{Serial, SerialPortSettings};
+use tokio::runtime::Runtime;
+use tokio_serial::Serial;
+use tokio_serial::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::Protocol;
+use crate::{DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, GuiMessage, Protocol};
 
 pub const ADD_ITEM: Selector = Selector::new("event.add-item");
 
@@ -43,6 +46,22 @@ impl Encoder for RawCodec {
     }
 }
 
+pub async fn close() {
+    todo!();
+}
+
+pub async fn update_protocol(protocol: Protocol) {
+    todo!();
+}
+
+pub async fn write(data: Vec<u8>) {
+    todo!();
+}
+
+pub async fn shutdown() {
+    todo!();
+}
+
 pub async fn serial_loop(
     event_sink: &ExtEventSink,
     settings: &SerialPortSettings,
@@ -74,6 +93,72 @@ pub async fn serial_loop(
                 break;
             }
         }
-        println!("The end !");
+    }
+}
+
+pub fn runtime(event_sink: ExtEventSink, receiver: Receiver<GuiMessage>) {
+    let mut settings = SerialPortSettings::default();
+    // Create the runtime
+    let mut async_rt = Runtime::new().unwrap();
+
+    let mut is_open = false;
+
+    loop {
+        if let Ok(message) = receiver.recv() {
+            match message {
+                GuiMessage::Open(open_msg) => {
+                    if !is_open {
+                        is_open = true;
+                        let name = open_msg.port_name.as_str();
+
+                        settings.baud_rate = open_msg.baud_rate.parse::<u32>().unwrap();
+
+                        settings.data_bits = match open_msg.data_bits {
+                            DruidDataBits::Eight => DataBits::Eight,
+                            DruidDataBits::Seven => DataBits::Seven,
+                            DruidDataBits::Six => DataBits::Six,
+                            DruidDataBits::Five => DataBits::Five,
+                        };
+
+                        settings.flow_control = match open_msg.flow_control {
+                            DruidFlowControl::Hardware => FlowControl::Hardware,
+                            DruidFlowControl::Software => FlowControl::Software,
+                            DruidFlowControl::None => FlowControl::None,
+                        };
+
+                        settings.parity = match open_msg.parity {
+                            DruidParity::Even => Parity::Even,
+                            DruidParity::Odd => Parity::Odd,
+                            DruidParity::None => Parity::None,
+                        };
+
+                        settings.stop_bits = match open_msg.stop_bits {
+                            DruidStopBits::One => StopBits::One,
+                            DruidStopBits::Two => StopBits::Two,
+                        };
+
+                        async_rt.block_on(serial_loop(
+                            &event_sink,
+                            &settings,
+                            name,
+                            open_msg.protocol,
+                        ));
+                    };
+                }
+                GuiMessage::Close => {
+                    async_rt.spawn(close());
+                }
+                GuiMessage::UpdateProtocol(protocol) => {
+                    async_rt.spawn(update_protocol(protocol));
+                }
+                GuiMessage::Write(data) => {
+                    async_rt.spawn(write(data));
+                }
+                GuiMessage::Shutdown => {
+                    async_rt.spawn(shutdown());
+                    break;
+                }
+            };
+        }
     }
 }

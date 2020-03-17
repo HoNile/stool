@@ -1,4 +1,5 @@
 mod async_serial;
+mod stool_ui;
 
 use async_serial::ADD_ITEM;
 use druid::widget::{
@@ -11,53 +12,17 @@ use druid::{
 };
 use serialport;
 use std::{
-    str,
     sync::{
         mpsc::{channel, Sender},
         Arc,
     },
     thread,
 };
-use tokio::runtime::Runtime;
-use tokio_serial::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
+use stool_ui::{
+    DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, GuiMessage, OpenMessage, Protocol,
+};
 
 const OPEN_PORT: Selector = Selector::new("event.open-port");
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-pub enum Protocol {
-    Lines,
-    Raw,
-}
-
-// FIXME should probably not be done like this
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-enum DruidDataBits {
-    Eight,
-    Seven,
-    Six,
-    Five,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-enum DruidFlowControl {
-    Hardware,
-    Software,
-    None,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-enum DruidParity {
-    Even,
-    Odd,
-    None,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-enum DruidStopBits {
-    One,
-    Two,
-}
-// END FIXME
 
 struct EventHandler;
 
@@ -73,17 +38,7 @@ struct AppData {
     parity: DruidParity,
     stop_bits: DruidStopBits,
     protocol: Protocol,
-    sender: Arc<
-        Sender<(
-            String,
-            String,
-            DruidDataBits,
-            DruidFlowControl,
-            DruidParity,
-            DruidStopBits,
-            Protocol,
-        )>,
-    >,
+    sender: Arc<Sender<GuiMessage>>,
 }
 
 impl EventHandler {
@@ -141,24 +96,15 @@ impl Widget<AppData> for EventHandler {
                                 .collect::<String>()
                         );
 
-                        // FIXME should not be done in two run
-                        /*let to_insert = to_insert
-                        .as_bytes()
-                        .chunks(chunk_size)
-                        .map(|buf| unsafe { str::from_utf8_unchecked(buf) }) // I work only with ascii so it's safe and I should not use String for this
-                        .collect::<Vec<&str>>();*/
                         let to_insert = to_insert
                             .as_bytes()
                             .chunks(chunk_size)
-                            .map(|buf| match str::from_utf8(&buf[..]) {
-                                Ok(data) => data,
-                                Err(_) => "?",
-                            })
-                            .collect::<Vec<&str>>();
+                            .map(|buf| String::from_utf8_lossy(&buf[..]))
+                            .collect::<Vec<_>>();
 
                         for i in to_insert {
                             items[items_idx].clear();
-                            items[items_idx].insert_str(0, i);
+                            items[items_idx] = i.to_string();
                             if i.len() == chunk_size {
                                 items.push("".to_string());
                                 items_idx += 1;
@@ -172,15 +118,15 @@ impl Widget<AppData> for EventHandler {
             }
             Event::Command(cmd) if cmd.selector == OPEN_PORT => data
                 .sender
-                .send((
-                    data.port_name.clone(),
-                    data.baud_rate.clone(),
-                    data.data_bits,
-                    data.flow_control,
-                    data.parity,
-                    data.stop_bits,
-                    data.protocol,
-                ))
+                .send(GuiMessage::Open(OpenMessage {
+                    port_name: data.port_name.clone(),
+                    baud_rate: data.baud_rate.clone(),
+                    data_bits: data.data_bits,
+                    flow_control: data.flow_control,
+                    parity: data.parity,
+                    stop_bits: data.stop_bits,
+                    protocol: data.protocol,
+                }))
                 .unwrap(),
             _ => (),
         }
@@ -211,92 +157,9 @@ fn main() {
 
     let event_sink = launcher.get_external_handle();
 
-    let (sender, receiver) = channel::<(
-        String,
-        String,
-        DruidDataBits,
-        DruidFlowControl,
-        DruidParity,
-        DruidStopBits,
-        Protocol,
-    )>();
+    let (sender, receiver) = channel::<GuiMessage>();
 
-    thread::spawn(move || {
-        let mut settings = SerialPortSettings::default();
-        // Create the runtime
-        let mut async_rt = Runtime::new().unwrap();
-
-        /*
-        TODO communication with async runtime should be something like this
-        let mut is_open = false;
-        loop {
-         if let Ok(gui_msg) = receiver.recv() {
-            Open => {
-               if !is_open {
-                  is_open = true;
-                  async_rt.block_on(async_serial::serial_loop(
-                     &event_sink,
-                     &settings,
-                     name,
-                     gui_settings.6.clone(),
-                  ));
-               }
-            },
-            Close => {
-               async_rt.spawn(async_serial::close());
-               is_open = false;
-            },
-            UpdateProtocol => {
-               async_rt.spawn(async_serial::update_protocol());
-            },
-            Write => {
-               async_rt.spawn(async_serial::write());
-            },
-            Shutdown => {
-               async_rt.spawn(async_serial::shutdown());
-               break;
-            }
-         }
-        }
-        */
-
-        if let Ok(gui_settings) = receiver.recv() {
-            let name = gui_settings.0.as_str();
-
-            settings.baud_rate = gui_settings.1.parse::<u32>().unwrap();
-
-            settings.data_bits = match gui_settings.2 {
-                DruidDataBits::Eight => DataBits::Eight,
-                DruidDataBits::Seven => DataBits::Seven,
-                DruidDataBits::Six => DataBits::Six,
-                DruidDataBits::Five => DataBits::Five,
-            };
-
-            settings.flow_control = match gui_settings.3 {
-                DruidFlowControl::Hardware => FlowControl::Hardware,
-                DruidFlowControl::Software => FlowControl::Software,
-                DruidFlowControl::None => FlowControl::None,
-            };
-
-            settings.parity = match gui_settings.4 {
-                DruidParity::Even => Parity::Even,
-                DruidParity::Odd => Parity::Odd,
-                DruidParity::None => Parity::None,
-            };
-
-            settings.stop_bits = match gui_settings.5 {
-                DruidStopBits::One => StopBits::One,
-                DruidStopBits::Two => StopBits::Two,
-            };
-
-            async_rt.block_on(async_serial::serial_loop(
-                &event_sink,
-                &settings,
-                name,
-                gui_settings.6,
-            ));
-        }
-    });
+    thread::spawn(move || async_serial::runtime(event_sink, receiver));
 
     launcher
         .use_simple_logger()
@@ -321,8 +184,6 @@ fn make_ui() -> impl Widget<AppData> {
         .map(|pinfo| pinfo.port_name.clone())
         .collect::<Vec<String>>()
         .join(" ");
-
-    println!("here: {}", list_ports);
 
     let control_panel = Flex::column()
         .with_child(
