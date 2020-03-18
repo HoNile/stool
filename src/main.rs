@@ -21,6 +21,7 @@ use std::{
 use stool_ui::{
     DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, GuiMessage, OpenMessage, Protocol,
 };
+use tokio::runtime::Runtime;
 
 const OPEN_PORT: Selector = Selector::new("event.open-port");
 
@@ -96,6 +97,7 @@ impl Widget<AppData> for EventHandler {
                                 .collect::<String>()
                         );
 
+                        // FIXME poor solution to split String
                         let to_insert = to_insert
                             .as_bytes()
                             .chunks(chunk_size)
@@ -159,7 +161,11 @@ fn main() {
 
     let (sender, receiver) = channel::<GuiMessage>();
 
-    thread::spawn(move || async_serial::runtime(event_sink, receiver));
+    thread::spawn(move || {
+        // Create the runtime
+        let mut async_rt = Runtime::new().unwrap();
+        async_rt.block_on(async_serial::serial_loop(&event_sink, receiver));
+    });
 
     launcher
         .use_simple_logger()
