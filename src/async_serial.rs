@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 use druid::{ExtEventSink, Selector};
-use futures::stream::StreamExt;
-use std::sync::mpsc::channel;
+use futures::{channel::mpsc, stream::StreamExt};
+use futures_util::sink::SinkExt;
 use std::sync::mpsc::Receiver;
 use std::{io::Error, thread};
 use tokio_serial::Serial;
@@ -49,11 +49,11 @@ impl Encoder for RawCodec {
 }
 
 pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMessage>) {
-    let (sender, receiver) = channel::<OpenMessage>();
-    let (close_sender, close_receiver) = channel::<GuiMessage>();
-    let (protocol_sender, protocol_receiver) = channel::<GuiMessage>();
-    let (write_sender, write_receiver) = channel::<GuiMessage>();
-    let (shutdown_sender, close_receiver) = channel::<GuiMessage>();
+    let (sender, mut receiver) = mpsc::unbounded::<OpenMessage>();
+    let (close_sender, mut close_receiver) = mpsc::unbounded::<GuiMessage>();
+    let (protocol_sender, mut protocol_receiver) = mpsc::unbounded::<Protocol>();
+    let (write_sender, mut write_receiver) = mpsc::unbounded::<Vec<u8>>();
+    let (shutdown_sender, mut shutdown_receiver) = mpsc::unbounded::<GuiMessage>();
 
     let handle = thread::spawn(move || loop {
         let mut is_open = false;
@@ -63,31 +63,32 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
                 GuiMessage::Open(open_msg) => {
                     if !is_open {
                         is_open = true;
-                        sender.send(open_msg).unwrap();
+                        sender.unbounded_send(open_msg).unwrap();
+                        //tokio::spawn(async { sender.send(open_msg).await.unwrap() });
                     };
                 }
                 GuiMessage::Close => {
-                    close_sender.send(GuiMessage::Close).unwrap();
+                    close_sender.unbounded_send(GuiMessage::Close).unwrap();
                     is_open = false;
                 }
                 GuiMessage::UpdateProtocol(protocol) => {
-                    protocol_sender
-                        .send(GuiMessage::UpdateProtocol(protocol))
-                        .unwrap();
+                    protocol_sender.unbounded_send(protocol).unwrap();
                 }
                 GuiMessage::Write(data) => {
-                    write_sender.send(GuiMessage::Write(data)).unwrap();
+                    write_sender.unbounded_send(data).unwrap();
                 }
                 GuiMessage::Shutdown => {
-                    // FIXME hard to do like this
-                    shutdown_sender.send(GuiMessage::Shutdown).unwrap();
+                    shutdown_sender
+                        .unbounded_send(GuiMessage::Shutdown)
+                        .unwrap();
                     break;
                 }
             };
         }
     });
 
-    if let Ok(mut config) = receiver.recv() {
+    let mut to_shutdown = false;
+    while let Some(mut config) = receiver.next().await {
         let mut settings = SerialPortSettings::default();
 
         settings.baud_rate = config.baud_rate.parse::<u32>().unwrap();
@@ -117,40 +118,59 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
         };
 
         if let Ok(port) = Serial::from_path(config.port_name.as_str(), &settings) {
-            let mut reader = RawCodec::new().framed(port);
+            let (mut writer, mut reader) = RawCodec::new().framed(port).split();
 
-            while let Some(data) = reader.next().await {
-                if let Ok(data) = data {
-                    if let Ok(new_protocol) = protocol_receiver.try_recv() {
-                        match new_protocol {
-                            GuiMessage::UpdateProtocol(new_protocol) => {
+            loop {
+                tokio::select! {
+                    data = reader.next() => {
+                        if let Some(Ok(data)) = data {
+                            if let Some(new_protocol) = protocol_receiver.next().await {
                                 config.protocol = new_protocol;
                             }
-                            _ => {
-                                panic!();
-                            }
-                        }
-                    }
 
-                    match config.protocol {
-                        Protocol::Raw => {
-                            event_sink
-                                .submit_command(ADD_ITEM, hex::encode_upper(data), None)
-                                .unwrap();
-                        }
-                        Protocol::Lines => {
-                            event_sink
-                                .submit_command(
-                                    ADD_ITEM,
-                                    String::from_utf8_lossy(&data[..]).to_string(),
-                                    None,
-                                )
-                                .unwrap();
+                            match config.protocol {
+                                Protocol::Raw => {
+                                    event_sink
+                                        .submit_command(ADD_ITEM, hex::encode_upper(data), None)
+                                        .unwrap();
+                                }
+                                Protocol::Lines => {
+                                    event_sink
+                                        .submit_command(
+                                            ADD_ITEM,
+                                            String::from_utf8_lossy(&data[..]).to_string(),
+                                            None,
+                                        )
+                                        .unwrap();
+                                }
+                            }
+                        } else {
+                            break;
                         }
                     }
-                } else {
-                    break;
+                    data = write_receiver.next() => {
+                        if let Some(data) = data {
+                            let mut bytes = BytesMut::with_capacity(data.len());
+                            bytes.put(&data[..]);
+                            writer.send(bytes).await.unwrap();
+                        }
+                    }
+                    msg = close_receiver.next() => {
+                        if let Some(_) = msg {
+                            break;
+                        }
+                    }
+                    msg = shutdown_receiver.next() => {
+                        if let Some(_) = msg {
+                            to_shutdown = true;
+                            break;
+                        }
+                    }
                 }
+            }
+
+            if to_shutdown {
+                break;
             }
         }
     }
