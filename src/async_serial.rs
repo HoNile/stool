@@ -4,8 +4,7 @@ use futures::{channel::mpsc, stream::StreamExt};
 use futures_util::sink::SinkExt;
 use std::sync::mpsc::Receiver;
 use std::{io::Error, thread};
-use tokio_serial::Serial;
-use tokio_serial::{DataBits, FlowControl, Parity, SerialPortSettings, StopBits};
+use tokio_serial::{DataBits, FlowControl, Parity, Serial, SerialPortSettings, StopBits};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
@@ -49,41 +48,49 @@ impl Encoder for RawCodec {
 }
 
 pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMessage>) {
+    //let (sender, mut receiver) = mpsc::channel::<OpenMessage>(8);
     let (sender, mut receiver) = mpsc::unbounded::<OpenMessage>();
-    let (close_sender, mut close_receiver) = mpsc::unbounded::<GuiMessage>();
+    let (close_sender, mut close_receiver) = mpsc::unbounded::<()>();
     let (protocol_sender, mut protocol_receiver) = mpsc::unbounded::<Protocol>();
     let (write_sender, mut write_receiver) = mpsc::unbounded::<Vec<u8>>();
-    let (shutdown_sender, mut shutdown_receiver) = mpsc::unbounded::<GuiMessage>();
+    let (shutdown_sender, mut shutdown_receiver) = mpsc::unbounded::<()>();
 
-    let handle = thread::spawn(move || loop {
+    let handle = thread::spawn(move || {
         let mut is_open = false;
-
-        if let Ok(message) = receiver_gui.recv() {
-            match message {
-                GuiMessage::Open(open_msg) => {
-                    if !is_open {
-                        is_open = true;
-                        sender.unbounded_send(open_msg).unwrap();
-                        //tokio::spawn(async { sender.send(open_msg).await.unwrap() });
-                    };
-                }
-                GuiMessage::Close => {
-                    close_sender.unbounded_send(GuiMessage::Close).unwrap();
-                    is_open = false;
-                }
-                GuiMessage::UpdateProtocol(protocol) => {
-                    protocol_sender.unbounded_send(protocol).unwrap();
-                }
-                GuiMessage::Write(data) => {
-                    write_sender.unbounded_send(data).unwrap();
-                }
-                GuiMessage::Shutdown => {
-                    shutdown_sender
-                        .unbounded_send(GuiMessage::Shutdown)
-                        .unwrap();
-                    break;
-                }
-            };
+        loop {
+            if let Ok(message) = receiver_gui.recv() {
+                match message {
+                    GuiMessage::Open(open_msg) => {
+                        if !is_open {
+                            is_open = true;
+                            sender.unbounded_send(open_msg).unwrap();
+                            //let mut cl_sender = sender.clone();
+                            //tokio::spawn(async move { cl_sender.send(open_msg).await.unwrap() });
+                        };
+                    }
+                    GuiMessage::Close => {
+                        if is_open {
+                            close_sender.unbounded_send(()).unwrap();
+                            is_open = false;
+                        }
+                    }
+                    GuiMessage::UpdateProtocol(protocol) => {
+                        if is_open {
+                            protocol_sender.unbounded_send(protocol).unwrap();
+                        }
+                    }
+                    GuiMessage::Write(data) => {
+                        if is_open {
+                            write_sender.unbounded_send(data).unwrap();
+                        }
+                    }
+                    GuiMessage::Shutdown => {
+                        // FIXME what happens currently if no port open ?
+                        shutdown_sender.unbounded_send(()).unwrap();
+                        break;
+                    }
+                };
+            }
         }
     });
 
@@ -119,15 +126,15 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
 
         if let Ok(port) = Serial::from_path(config.port_name.as_str(), &settings) {
             let (mut writer, mut reader) = RawCodec::new().framed(port).split();
-
             loop {
                 tokio::select! {
+                    new_protocol = protocol_receiver.next() => {
+                        if let Some(new_protocol) = new_protocol {
+                            config.protocol = new_protocol;
+                        }
+                    }
                     data = reader.next() => {
                         if let Some(Ok(data)) = data {
-                            if let Some(new_protocol) = protocol_receiver.next().await {
-                                config.protocol = new_protocol;
-                            }
-
                             match config.protocol {
                                 Protocol::Raw => {
                                     event_sink
@@ -152,6 +159,7 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
                         if let Some(data) = data {
                             let mut bytes = BytesMut::with_capacity(data.len());
                             bytes.put(&data[..]);
+                            println!("Send: {:?}", bytes); // TODO Should be visible in gui
                             writer.send(bytes).await.unwrap();
                         }
                     }

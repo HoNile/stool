@@ -2,15 +2,10 @@ mod async_serial;
 mod stool_ui;
 
 use async_serial::ADD_ITEM;
-use druid::widget::{
-    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox, TextBox, WidgetExt,
-};
 use druid::{
-    AppLauncher, BoxConstraints, Color, Command, Data, Env, Event, EventCtx, LayoutCtx, Lens,
-    LifeCycle, LifeCycleCtx, LocalizedString, PaintCtx, Selector, Size, UpdateCtx, Widget,
-    WindowDesc,
+    AppLauncher, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, Lens, LifeCycle,
+    LifeCycleCtx, LocalizedString, PaintCtx, Selector, Size, UpdateCtx, Widget, WindowDesc,
 };
-use serialport;
 use std::{
     sync::{
         mpsc::{channel, Sender},
@@ -24,16 +19,17 @@ use stool_ui::{
 use tokio::runtime::Runtime;
 
 const OPEN_PORT: Selector = Selector::new("event.open-port");
+const CLOSE_PORT: Selector = Selector::new("event.close-port");
+const WRITE_PORT: Selector = Selector::new("event.write-port");
 
-struct EventHandler;
-
-type ItemData = String;
+pub struct EventHandler;
 
 #[derive(Debug, Clone, Data, Lens)]
-struct AppData {
-    items: Arc<Vec<ItemData>>,
+pub struct AppData {
+    items: Arc<Vec<String>>,
     port_name: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
     baud_rate: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
+    to_write: String,  // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
     data_bits: DruidDataBits,
     flow_control: DruidFlowControl,
     parity: DruidParity,
@@ -67,7 +63,7 @@ impl Widget<AppData> for EventHandler {
                         let to_insert = format!(
                             "{} {}",
                             items[items_idx],
-                            cmd.get_object::<ItemData>().unwrap()
+                            cmd.get_object::<String>().unwrap()
                         );
 
                         for line in to_insert.lines() {
@@ -81,7 +77,7 @@ impl Widget<AppData> for EventHandler {
                         let to_insert = format!(
                             "{} {}",
                             items[items_idx],
-                            cmd.get_object::<ItemData>()
+                            cmd.get_object::<String>()
                                 .unwrap()
                                 .chars()
                                 .enumerate()
@@ -118,18 +114,34 @@ impl Widget<AppData> for EventHandler {
                 ctx.request_layout();
                 ctx.request_paint();
             }
-            Event::Command(cmd) if cmd.selector == OPEN_PORT => data
-                .sender
-                .send(GuiMessage::Open(OpenMessage {
-                    port_name: data.port_name.clone(),
-                    baud_rate: data.baud_rate.clone(),
-                    data_bits: data.data_bits,
-                    flow_control: data.flow_control,
-                    parity: data.parity,
-                    stop_bits: data.stop_bits,
-                    protocol: data.protocol,
-                }))
-                .unwrap(),
+            Event::Command(cmd) if cmd.selector == OPEN_PORT => {
+                // FIXME protocol should be update on click in its RadioGroup
+                data.sender
+                    .send(GuiMessage::UpdateProtocol(data.protocol))
+                    .unwrap();
+
+                data.sender
+                    .send(GuiMessage::Open(OpenMessage {
+                        port_name: data.port_name.clone(),
+                        baud_rate: data.baud_rate.clone(),
+                        data_bits: data.data_bits,
+                        flow_control: data.flow_control,
+                        parity: data.parity,
+                        stop_bits: data.stop_bits,
+                        protocol: data.protocol,
+                    }))
+                    .unwrap()
+            }
+            Event::Command(cmd) if cmd.selector == CLOSE_PORT => {
+                data.sender.send(GuiMessage::Close).unwrap()
+            }
+            Event::Command(cmd) if cmd.selector == WRITE_PORT => {
+                // FIXME conversion
+                let bytes = data.to_write.as_bytes();
+                data.sender
+                    .send(GuiMessage::Write(bytes.to_owned()))
+                    .unwrap()
+            }
             _ => (),
         }
     }
@@ -152,7 +164,7 @@ impl Widget<AppData> for EventHandler {
 }
 
 fn main() {
-    let window = WindowDesc::new(make_ui)
+    let window = WindowDesc::new(stool_ui::make_ui)
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"));
 
     let launcher = AppLauncher::with_window(window);
@@ -173,6 +185,7 @@ fn main() {
             items: Arc::new(vec![]),
             port_name: "".to_string(),
             baud_rate: "115200".to_string(),
+            to_write: "".to_string(),
             data_bits: DruidDataBits::Eight,
             flow_control: DruidFlowControl::None,
             parity: DruidParity::None,
@@ -181,170 +194,4 @@ fn main() {
             sender: Arc::new(sender),
         })
         .expect("launch failed");
-}
-
-fn make_ui() -> impl Widget<AppData> {
-    let list_ports: String = serialport::available_ports()
-        .unwrap()
-        .iter()
-        .map(|pinfo| pinfo.port_name.clone())
-        .collect::<Vec<String>>()
-        .join(" ");
-
-    let control_panel = Flex::column()
-        .with_child(
-            Flex::column()
-                .with_child(
-                    Label::new("Available ports:")
-                        .fix_width(110.0)
-                        .padding((20., 20., 20., 0.)),
-                    0.0,
-                )
-                .with_spacer(3.)
-                .with_child(Label::new(list_ports).fix_width(110.0), 0.0),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Port:"), 0.0)
-                .with_spacer(3.)
-                .with_child(
-                    TextBox::new().fix_width(110.0).lens(AppData::port_name),
-                    0.0,
-                ),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Baudrate:"), 0.0)
-                .with_spacer(3.)
-                .with_child(
-                    TextBox::new().fix_width(110.0).lens(AppData::baud_rate),
-                    0.0,
-                ),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Data bits:"), 0.0)
-                .with_spacer(3.)
-                .with_child(
-                    RadioGroup::new(vec![
-                        ("8", DruidDataBits::Eight),
-                        ("7", DruidDataBits::Seven),
-                        ("6", DruidDataBits::Six),
-                        ("5", DruidDataBits::Five),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::data_bits),
-                    0.0,
-                ),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Flow control:"), 0.0)
-                .with_spacer(3.)
-                .with_child(
-                    RadioGroup::new(vec![
-                        ("None", DruidFlowControl::None),
-                        ("Hardware", DruidFlowControl::Hardware),
-                        ("Software", DruidFlowControl::Software),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::flow_control),
-                    0.0,
-                ),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Parity:"), 0.0)
-                .with_spacer(3.)
-                .with_child(
-                    RadioGroup::new(vec![
-                        ("None", DruidParity::None),
-                        ("Even", DruidParity::Even),
-                        ("Odd", DruidParity::Odd),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::parity),
-                    0.0,
-                ),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Stop bits:"), 0.0)
-                .with_spacer(3.)
-                .with_child(
-                    RadioGroup::new(vec![
-                        ("One", DruidStopBits::One),
-                        ("Two", DruidStopBits::Two),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::stop_bits),
-                    0.0,
-                ),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Protocol:"), 0.0)
-                .with_spacer(3.)
-                .with_child(
-                    RadioGroup::new(vec![("Lines", Protocol::Lines), ("Raw", Protocol::Raw)])
-                        .fix_width(110.0)
-                        .border(Color::grey(0.6), 2.0)
-                        .rounded(5.0)
-                        .lens(AppData::protocol),
-                    0.0,
-                ),
-            0.0,
-        )
-        .with_spacer(6.)
-        .with_child(
-            Button::new("Open port", |ctx, data: &mut AppData, _env| {
-                ctx.submit_command(Command::new(OPEN_PORT, data.clone()), None);
-            })
-            .fix_width(110.0),
-            0.0,
-        )
-        .with_child(SizedBox::empty(), 1.0)
-        .cross_axis_alignment(CrossAxisAlignment::Center)
-        .background(Color::rgb8(0x1a, 0x1a, 0x1a));
-
-    Flex::column()
-        .with_child(EventHandler::new().fix_width(0.0).fix_height(0.0), 0.0)
-        .with_child(
-            Flex::row().with_child(control_panel, 0.0).with_child(
-                Scroll::new(
-                    List::new(|| {
-                        Button::new(
-                            |item: &ItemData, _env: &_| format!("{}", item),
-                            |_ctx, _data, _env| {},
-                        )
-                    })
-                    .lens(AppData::items),
-                )
-                .vertical(),
-                1.0,
-            ),
-            1.0,
-        )
 }
