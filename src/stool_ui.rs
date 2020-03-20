@@ -71,15 +71,10 @@ pub fn make_ui() -> impl Widget<AppData> {
         .collect::<Vec<String>>()
         .join(" ");
 
-    let write_panel = Flex::column()
-        .with_child(
-            Label::new("Write:")
-                .fix_width(110.0)
-                .padding((20., 20., 20., 0.)),
-            0.0,
-        )
+    let write_panel = Flex::row()
+        .with_child(SizedBox::empty().width(150.).height(40.), 0.0)
         .with_spacer(3.)
-        .with_child(TextBox::new().fix_width(110.0).lens(AppData::to_write), 0.0)
+        .with_child(TextBox::new().lens(AppData::to_write), 1.0)
         .with_spacer(6.)
         .with_child(
             Button::new("Send", |ctx, data: &mut AppData, _env| {
@@ -88,7 +83,7 @@ pub fn make_ui() -> impl Widget<AppData> {
             .fix_width(110.0),
             0.0,
         )
-        .with_child(SizedBox::empty(), 1.0)
+        .with_child(SizedBox::empty().width(6.), 0.0)
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .background(Color::rgb8(0x1a, 0x1a, 0x1a));
 
@@ -241,22 +236,15 @@ pub fn make_ui() -> impl Widget<AppData> {
     Flex::column()
         .with_child(EventHandler::new().fix_width(0.0).fix_height(0.0), 0.0)
         .with_child(
-            Flex::row()
-                .with_child(control_panel, 0.0)
-                .with_child(
-                    Scroll::new(
-                        List::new(|| {
-                            Button::new(
-                                |item: &String, _env: &_| format!("{}", item),
-                                |_ctx, _data, _env| {},
-                            )
-                        })
+            Flex::row().with_child(control_panel, 0.0).with_child(
+                Scroll::new(
+                    List::new(|| Label::new(|item: &String, _env: &_| format!("{}", item)))
                         .lens(AppData::items),
-                    )
-                    .vertical(),
-                    1.0,
                 )
-                .with_child(write_panel, 0.0),
+                .expand(),
+                1.0,
+            ),
             1.0,
         )
+        .with_child(write_panel, 0.0)
 }

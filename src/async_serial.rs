@@ -11,7 +11,8 @@ use crate::{
     DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, GuiMessage, OpenMessage, Protocol,
 };
 
-pub const ADD_ITEM: Selector = Selector::new("event.add-item");
+pub const READ_ITEM: Selector = Selector::new("event.read-item");
+pub const WRITE_ITEM: Selector = Selector::new("event.write-item");
 
 pub struct RawCodec;
 
@@ -138,13 +139,13 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
                             match config.protocol {
                                 Protocol::Raw => {
                                     event_sink
-                                        .submit_command(ADD_ITEM, hex::encode_upper(data), None)
+                                        .submit_command(READ_ITEM, hex::encode_upper(data), None)
                                         .unwrap();
                                 }
                                 Protocol::Lines => {
                                     event_sink
                                         .submit_command(
-                                            ADD_ITEM,
+                                            READ_ITEM,
                                             String::from_utf8_lossy(&data[..]).to_string(),
                                             None,
                                         )
@@ -157,9 +158,10 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
                     }
                     data = write_receiver.next() => {
                         if let Some(data) = data {
+                            event_sink.submit_command(WRITE_ITEM, format!("> {}", hex::encode_upper(&data)), None)
+                                      .unwrap();
                             let mut bytes = BytesMut::with_capacity(data.len());
                             bytes.put(&data[..]);
-                            println!("Send: {:?}", bytes); // TODO Should be visible in gui
                             writer.send(bytes).await.unwrap();
                         }
                     }

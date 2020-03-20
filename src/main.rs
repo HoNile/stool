@@ -1,7 +1,7 @@
 mod async_serial;
 mod stool_ui;
 
-use async_serial::ADD_ITEM;
+use async_serial::{READ_ITEM, WRITE_ITEM};
 use druid::{
     AppLauncher, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, Lens, LifeCycle,
     LifeCycleCtx, LocalizedString, PaintCtx, Selector, Size, UpdateCtx, Widget, WindowDesc,
@@ -26,7 +26,7 @@ pub struct EventHandler;
 
 #[derive(Debug, Clone, Data, Lens)]
 pub struct AppData {
-    items: Arc<Vec<String>>,
+    items: Arc<Vec<String>>, // FIXME I must split GUI from Logic
     port_name: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
     baud_rate: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
     to_write: String,  // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
@@ -47,10 +47,27 @@ impl EventHandler {
 impl Widget<AppData> for EventHandler {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppData, _env: &Env) {
         match event {
-            Event::Command(cmd) if cmd.selector == ADD_ITEM => {
+            // FIXME mix READ and WRITE item is not clean currently
+            Event::Command(cmd) if cmd.selector == WRITE_ITEM => {
+                let items = Arc::make_mut(&mut data.items);
+                if items.is_empty() {
+                    items.push(cmd.get_object::<String>().unwrap().clone());
+                    items.push("".to_string());
+                } else {
+                    let items_idx = items.len() - 1;
+                    if items[items_idx] == "" {
+                        items[items_idx] = cmd.get_object::<String>().unwrap().clone();
+                        items.push("".to_string());
+                    } else {
+                        items.push(cmd.get_object::<String>().unwrap().clone());
+                        items.push("".to_string());
+                    }
+                }
+            }
+            Event::Command(cmd) if cmd.selector == READ_ITEM => {
                 let items = Arc::make_mut(&mut data.items);
 
-                if items.len() == 0 {
+                if items.is_empty() {
                     items.push("".to_string());
                 }
 
@@ -165,7 +182,8 @@ impl Widget<AppData> for EventHandler {
 
 fn main() {
     let window = WindowDesc::new(stool_ui::make_ui)
-        .title(LocalizedString::new("Serial tool").with_placeholder("Stool"));
+        .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
+        .window_size((500., 850.)); // TODO check I think i should not need to do this by myself
 
     let launcher = AppLauncher::with_window(window);
 
