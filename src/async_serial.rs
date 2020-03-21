@@ -144,7 +144,7 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
                                 }
                                 Protocol::Lines => {
                                     // note this should not be necessary when druid will be more polish
-                                    let to_send : String = String::from_utf8_lossy(&data[..])
+                                    let to_send : String = String::from_utf8_lossy(&data)
                                                             .chars()
                                                             .map(|c| unsafe {
                                                                 if c == char::from_u32_unchecked(0x0B) ||

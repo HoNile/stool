@@ -77,50 +77,48 @@ impl Widget<AppData> for EventHandler {
 
                 match data.protocol {
                     Protocol::Lines => {
-                        let to_insert = format!(
-                            "{} {}",
-                            items[items_idx],
-                            cmd.get_object::<String>().unwrap()
-                        );
-
-                        for line in to_insert.lines() {
-                            items[items_idx].clear();
-                            items[items_idx].insert_str(0, line);
+                        for line in cmd.get_object::<String>().unwrap().lines() {
+                            let item_idx_len = items[items_idx].len();
+                            if item_idx_len > 0 {
+                                items[items_idx].insert_str(item_idx_len - 1, line);
+                            } else {
+                                items[items_idx].insert_str(0, line);
+                            }
                             items.push("".to_string());
                             items_idx += 1;
                         }
                     }
                     Protocol::Raw => {
-                        let to_insert = format!(
-                            "{} {}",
-                            items[items_idx],
-                            cmd.get_object::<String>()
-                                .unwrap()
-                                .chars()
-                                .enumerate()
-                                .flat_map(|(i, c)| {
-                                    if i != 0 && i % 2 == 0 {
-                                        Some(' ')
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter()
-                                    .chain(std::iter::once(c))
-                                })
-                                .collect::<String>()
-                        );
+                        let old_data: String = items[items_idx].split_ascii_whitespace().collect();
+                        let new_data = cmd.get_object::<String>().unwrap();
 
-                        // FIXME poor solution to split String
-                        let to_insert = to_insert
-                            .as_bytes()
-                            .chunks(chunk_size)
-                            .map(|buf| String::from_utf8_lossy(&buf[..]))
-                            .collect::<Vec<_>>();
+                        let mut to_insert = old_data
+                            .chars()
+                            .chain(new_data.chars())
+                            .enumerate()
+                            .flat_map(|(i, c)| {
+                                if i != 0 && i % 2 == 0 {
+                                    Some(' ')
+                                } else {
+                                    None
+                                }
+                                .into_iter()
+                                .chain(std::iter::once(c))
+                            });
 
-                        for i in to_insert {
-                            items[items_idx].clear();
-                            items[items_idx] = i.to_string();
-                            if i.len() == chunk_size {
+                        let mut collector = Vec::with_capacity((new_data.len() / chunk_size) + 2);
+                        loop {
+                            let tmp: String = (&mut to_insert).take(chunk_size).collect();
+                            if tmp == "" {
+                                break;
+                            }
+                            collector.push(tmp);
+                        }
+
+                        items[items_idx].clear();
+                        for s in collector {
+                            items[items_idx] = s;
+                            if items[items_idx].len() == chunk_size {
                                 items.push("".to_string());
                                 items_idx += 1;
                             }
