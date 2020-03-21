@@ -3,7 +3,7 @@ use druid::{ExtEventSink, Selector};
 use futures::{channel::mpsc, stream::StreamExt};
 use futures_util::sink::SinkExt;
 use std::sync::mpsc::Receiver;
-use std::{io::Error, thread};
+use std::{char, io::Error, thread};
 use tokio_serial::{DataBits, FlowControl, Parity, Serial, SerialPortSettings, StopBits};
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -143,10 +143,21 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
                                         .unwrap();
                                 }
                                 Protocol::Lines => {
+                                    // note this should not be necessary when druid will be more polish
+                                    let to_send : String = String::from_utf8_lossy(&data[..])
+                                                            .chars()
+                                                            .map(|c| unsafe {
+                                                                if c == char::from_u32_unchecked(0x0B) ||
+                                                                   c == char::from_u32_unchecked(0x0C) ||
+                                                                   c== char::from_u32_unchecked(0x0D) {
+                                                                       char::from_u32_unchecked(0x00)
+                                                                    } else {
+                                                                        c
+                                                            }}).collect();
                                     event_sink
                                         .submit_command(
                                             READ_ITEM,
-                                            String::from_utf8_lossy(&data[..]).to_string(),
+                                            to_send,
                                             None,
                                         )
                                         .unwrap();

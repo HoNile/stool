@@ -238,7 +238,7 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(
             Flex::row().with_child(control_panel, 0.0).with_child(
                 Scroll::new(
-                    List::new(|| Label::new(|item: &String, _env: &_| format!("{}", item)))
+                    List::new(|| Label::new(|item: &String, _env: &_| item.to_string()))
                         .lens(AppData::items),
                 )
                 .expand(),

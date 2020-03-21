@@ -198,7 +198,6 @@ fn main() {
     });
 
     launcher
-        .use_simple_logger()
         .launch(AppData {
             items: Arc::new(vec![]),
             port_name: "".to_string(),
