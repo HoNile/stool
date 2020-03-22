@@ -73,7 +73,7 @@ pub fn make_ui() -> impl Widget<AppData> {
 
     let write_panel = Flex::row()
         .with_child(SizedBox::empty().width(150.).height(40.))
-        .with_flex_child(TextBox::new().lens(AppData::to_write), 1.0) // FIXME update broke this I think this is correct
+        .with_flex_child(TextBox::new().expand_width().lens(AppData::to_write), 1.0)
         .with_spacer(6.)
         .with_child(
             Button::new("Send", |ctx, data: &mut AppData, _env| {
