@@ -72,18 +72,16 @@ pub fn make_ui() -> impl Widget<AppData> {
         .join(" ");
 
     let write_panel = Flex::row()
-        .with_child(SizedBox::empty().width(150.).height(40.), 0.0)
-        .with_spacer(3.)
-        .with_child(TextBox::new().lens(AppData::to_write), 1.0)
+        .with_child(SizedBox::empty().width(150.).height(40.))
+        .with_flex_child(TextBox::new().lens(AppData::to_write), 1.0) // FIXME update broke this I think this is correct
         .with_spacer(6.)
         .with_child(
             Button::new("Send", |ctx, data: &mut AppData, _env| {
                 ctx.submit_command(Command::new(WRITE_PORT, data.clone()), None);
             })
             .fix_width(110.0),
-            0.0,
         )
-        .with_child(SizedBox::empty().width(6.), 0.0)
+        .with_child(SizedBox::empty().width(6.))
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .background(Color::rgb8(0x1a, 0x1a, 0x1a));
 
@@ -94,38 +92,28 @@ pub fn make_ui() -> impl Widget<AppData> {
                     Label::new("Available ports:")
                         .fix_width(110.0)
                         .padding((20., 20., 20., 0.)),
-                    0.0,
                 )
                 .with_spacer(3.)
-                .with_child(Label::new(list_ports).fix_width(110.0), 0.0),
-            0.0,
+                .with_child(Label::new(list_ports).fix_width(110.0)),
         )
         .with_spacer(6.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Port:"), 0.0)
+                .with_child(Label::new("Port:"))
                 .with_spacer(3.)
-                .with_child(
-                    TextBox::new().fix_width(110.0).lens(AppData::port_name),
-                    0.0,
-                ),
-            0.0,
+                .with_child(TextBox::new().fix_width(110.0).lens(AppData::port_name)),
         )
         .with_spacer(6.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Baudrate:"), 0.0)
+                .with_child(Label::new("Baudrate:"))
                 .with_spacer(3.)
-                .with_child(
-                    TextBox::new().fix_width(110.0).lens(AppData::baud_rate),
-                    0.0,
-                ),
-            0.0,
+                .with_child(TextBox::new().fix_width(110.0).lens(AppData::baud_rate)),
         )
         .with_spacer(6.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Data bits:"), 0.0)
+                .with_child(Label::new("Data bits:"))
                 .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
@@ -138,14 +126,12 @@ pub fn make_ui() -> impl Widget<AppData> {
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::data_bits),
-                    0.0,
                 ),
-            0.0,
         )
         .with_spacer(6.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Flow control:"), 0.0)
+                .with_child(Label::new("Flow control:"))
                 .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
@@ -157,14 +143,12 @@ pub fn make_ui() -> impl Widget<AppData> {
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::flow_control),
-                    0.0,
                 ),
-            0.0,
         )
         .with_spacer(6.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Parity:"), 0.0)
+                .with_child(Label::new("Parity:"))
                 .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
@@ -176,14 +160,12 @@ pub fn make_ui() -> impl Widget<AppData> {
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::parity),
-                    0.0,
                 ),
-            0.0,
         )
         .with_spacer(6.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Stop bits:"), 0.0)
+                .with_child(Label::new("Stop bits:"))
                 .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
@@ -194,14 +176,12 @@ pub fn make_ui() -> impl Widget<AppData> {
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::stop_bits),
-                    0.0,
                 ),
-            0.0,
         )
         .with_spacer(6.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Protocol:"), 0.0)
+                .with_child(Label::new("Protocol:"))
                 .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![("Lines", Protocol::Lines), ("Raw", Protocol::Raw)])
@@ -209,9 +189,7 @@ pub fn make_ui() -> impl Widget<AppData> {
                         .border(Color::grey(0.6), 2.0)
                         .rounded(5.0)
                         .lens(AppData::protocol),
-                    0.0,
                 ),
-            0.0,
         )
         .with_spacer(6.)
         .with_child(
@@ -219,7 +197,6 @@ pub fn make_ui() -> impl Widget<AppData> {
                 ctx.submit_command(Command::new(OPEN_PORT, data.clone()), None);
             })
             .fix_width(110.0),
-            0.0,
         )
         .with_spacer(6.)
         .with_child(
@@ -227,16 +204,15 @@ pub fn make_ui() -> impl Widget<AppData> {
                 ctx.submit_command(Command::new(CLOSE_PORT, data.clone()), None);
             })
             .fix_width(110.0),
-            0.0,
         )
-        .with_child(SizedBox::empty(), 1.0)
+        .with_flex_spacer(1.0)
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .background(Color::rgb8(0x1a, 0x1a, 0x1a));
 
     Flex::column()
-        .with_child(EventHandler::new().fix_width(0.0).fix_height(0.0), 0.0)
-        .with_child(
-            Flex::row().with_child(control_panel, 0.0).with_child(
+        .with_child(EventHandler::new().fix_width(0.0).fix_height(0.0))
+        .with_flex_child(
+            Flex::row().with_child(control_panel).with_flex_child(
                 Scroll::new(
                     List::new(|| Label::new(|item: &String, _env: &_| item.to_string()))
                         .lens(AppData::items),
@@ -246,5 +222,5 @@ pub fn make_ui() -> impl Widget<AppData> {
             ),
             1.0,
         )
-        .with_child(write_panel, 0.0)
+        .with_child(write_panel)
 }
