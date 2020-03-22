@@ -1,7 +1,7 @@
 use druid::widget::{
     Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox, TextBox, WidgetExt,
 };
-use druid::{Color, Command, Data, Widget};
+use druid::{Color, Command, Data, LocalizedString, Widget};
 use serialport;
 use std::vec::Vec;
 
@@ -76,9 +76,12 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_flex_child(TextBox::new().expand_width().lens(AppData::to_write), 1.0)
         .with_spacer(6.)
         .with_child(
-            Button::new("Send", |ctx, data: &mut AppData, _env| {
-                ctx.submit_command(Command::new(WRITE_PORT, data.clone()), None);
-            })
+            Button::new(
+                LocalizedString::new("Send"),
+                |ctx, data: &mut AppData, _env| {
+                    ctx.submit_command(Command::new(WRITE_PORT, data.clone()), None);
+                },
+            )
             .fix_width(110.0),
         )
         .with_child(SizedBox::empty().width(6.))
@@ -87,34 +90,25 @@ pub fn make_ui() -> impl Widget<AppData> {
 
     let control_panel = Flex::column()
         .with_child(
-            Flex::column()
-                .with_child(
-                    Label::new("Available ports:")
-                        .fix_width(110.0)
-                        .padding((20., 20., 20., 0.)),
-                )
-                .with_spacer(3.)
-                .with_child(Label::new(list_ports).fix_width(110.0)),
+            Label::new(LocalizedString::new("Available ports:"))
+                .fix_width(110.0)
+                .padding((20., 20., 20., 0.)),
         )
+        .with_spacer(3.)
+        .with_child(Label::new(list_ports).fix_width(110.0))
         .with_spacer(6.)
+        .with_child(Label::new(LocalizedString::new("Port:")))
+        .with_spacer(3.)
+        .with_child(TextBox::new().fix_width(110.0).lens(AppData::port_name))
+        .with_spacer(6.)
+        .with_child(Label::new(LocalizedString::new("Baudrate:")))
+        .with_spacer(3.)
+        .with_child(TextBox::new().fix_width(110.0).lens(AppData::baud_rate))
+        .with_spacer(6.)
+        .with_child(Label::new(LocalizedString::new("Data bits:")))
+        .with_spacer(3.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Port:"))
-                .with_spacer(3.)
-                .with_child(TextBox::new().fix_width(110.0).lens(AppData::port_name)),
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Baudrate:"))
-                .with_spacer(3.)
-                .with_child(TextBox::new().fix_width(110.0).lens(AppData::baud_rate)),
-        )
-        .with_spacer(6.)
-        .with_child(
-            Flex::column()
-                .with_child(Label::new("Data bits:"))
-                .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
                         ("8", DruidDataBits::Eight),
@@ -126,83 +120,97 @@ pub fn make_ui() -> impl Widget<AppData> {
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::data_bits),
-                ),
+                )
+                .cross_axis_alignment(CrossAxisAlignment::Start),
         )
         .with_spacer(6.)
+        .with_child(Label::new(LocalizedString::new("Flow control:")))
+        .with_spacer(3.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Flow control:"))
-                .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
-                        ("None", DruidFlowControl::None),
-                        ("Hardware", DruidFlowControl::Hardware),
-                        ("Software", DruidFlowControl::Software),
+                        (LocalizedString::new("None"), DruidFlowControl::None),
+                        (LocalizedString::new("Hardware"), DruidFlowControl::Hardware),
+                        (LocalizedString::new("Software"), DruidFlowControl::Software),
                     ])
                     .fix_width(110.0)
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::flow_control),
-                ),
+                )
+                .cross_axis_alignment(CrossAxisAlignment::Start),
         )
         .with_spacer(6.)
+        .with_child(Label::new(LocalizedString::new("Parity:")))
+        .with_spacer(3.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Parity:"))
-                .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
-                        ("None", DruidParity::None),
-                        ("Even", DruidParity::Even),
-                        ("Odd", DruidParity::Odd),
+                        (LocalizedString::new("None"), DruidParity::None),
+                        (LocalizedString::new("Even"), DruidParity::Even),
+                        (LocalizedString::new("Odd"), DruidParity::Odd),
                     ])
                     .fix_width(110.0)
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::parity),
-                ),
+                )
+                .cross_axis_alignment(CrossAxisAlignment::Start),
         )
         .with_spacer(6.)
+        .with_child(Label::new(LocalizedString::new("Stop bits:")))
+        .with_spacer(3.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Stop bits:"))
-                .with_spacer(3.)
                 .with_child(
                     RadioGroup::new(vec![
-                        ("One", DruidStopBits::One),
-                        ("Two", DruidStopBits::Two),
+                        (LocalizedString::new("One"), DruidStopBits::One),
+                        (LocalizedString::new("Two"), DruidStopBits::Two),
                     ])
                     .fix_width(110.0)
                     .border(Color::grey(0.6), 2.0)
                     .rounded(5.0)
                     .lens(AppData::stop_bits),
-                ),
+                )
+                .cross_axis_alignment(CrossAxisAlignment::Start),
         )
         .with_spacer(6.)
+        .with_child(Label::new(LocalizedString::new("Protocol:")))
+        .with_spacer(3.)
         .with_child(
             Flex::column()
-                .with_child(Label::new("Protocol:"))
-                .with_spacer(3.)
                 .with_child(
-                    RadioGroup::new(vec![("Lines", Protocol::Lines), ("Raw", Protocol::Raw)])
-                        .fix_width(110.0)
-                        .border(Color::grey(0.6), 2.0)
-                        .rounded(5.0)
-                        .lens(AppData::protocol),
-                ),
+                    RadioGroup::new(vec![
+                        (LocalizedString::new("Lines"), Protocol::Lines),
+                        (LocalizedString::new("Raw"), Protocol::Raw),
+                    ])
+                    .fix_width(110.0)
+                    .border(Color::grey(0.6), 2.0)
+                    .rounded(5.0)
+                    .lens(AppData::protocol),
+                )
+                .cross_axis_alignment(CrossAxisAlignment::Start),
         )
         .with_spacer(6.)
         .with_child(
-            Button::new("Open port", |ctx, data: &mut AppData, _env| {
-                ctx.submit_command(Command::new(OPEN_PORT, data.clone()), None);
-            })
+            Button::new(
+                LocalizedString::new("Open port"),
+                |ctx, data: &mut AppData, _env| {
+                    ctx.submit_command(Command::new(OPEN_PORT, data.clone()), None);
+                },
+            )
             .fix_width(110.0),
         )
         .with_spacer(6.)
         .with_child(
-            Button::new("Close port", |ctx, data: &mut AppData, _env| {
-                ctx.submit_command(Command::new(CLOSE_PORT, data.clone()), None);
-            })
+            Button::new(
+                LocalizedString::new("Close port"),
+                |ctx, data: &mut AppData, _env| {
+                    ctx.submit_command(Command::new(CLOSE_PORT, data.clone()), None);
+                },
+            )
             .fix_width(110.0),
         )
         .with_flex_spacer(1.0)

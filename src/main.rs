@@ -26,7 +26,7 @@ pub struct EventHandler;
 
 #[derive(Debug, Clone, Data, Lens)]
 pub struct AppData {
-    items: Arc<Vec<String>>, // FIXME I must split GUI from Logic
+    items: Arc<Vec<String>>, // FIXME I must split GUI from Logic and GUI cant grow infinitly
     port_name: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
     baud_rate: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
     to_write: String,  // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
@@ -181,7 +181,7 @@ impl Widget<AppData> for EventHandler {
 fn main() {
     let window = WindowDesc::new(stool_ui::make_ui)
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
-        .window_size((500., 850.)); // TODO check I think i should not need to do this by myself
+        .window_size((500., 850.));
 
     let launcher = AppLauncher::with_window(window);
 
