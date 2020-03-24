@@ -81,9 +81,9 @@ checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
 name = "backtrace"
-version = "0.3.45"
+version = "0.3.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad235dabf00f36301792cfe82499880ba54c6486be094d1047b02bacb67c14e8"
+checksum = "b1e692897359247cc6bb902933361652380af0f1b7651ae5c5013407f30e109e"
 dependencies = [
  "backtrace-sys",
  "cfg-if",
@@ -93,9 +93,9 @@ dependencies = [
 
 [[package]]
 name = "backtrace-sys"
-version = "0.1.34"
+version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca797db0057bae1a7aa2eef3283a874695455cecf08a43bfb8507ee0ebc1ed69"
+checksum = "7de8aba10a69c8e8d7622c5710229485ec32e9d55fdad160ea559c086fdcd118"
 dependencies = [
  "cc",
  "libc",
@@ -260,7 +260,7 @@ checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 [[package]]
 name = "druid"
 version = "0.5.0"
-source = "git+https://github.com/xi-editor/druid.git#a7a4bf4779975d2791e981b67c8228d6b7b3db6a"
+source = "git+https://github.com/xi-editor/druid.git#e0a3c0290399614068c434f4e65df690649f4df3"
 dependencies = [
  "druid-derive",
  "druid-shell",
@@ -278,7 +278,7 @@ dependencies = [
 [[package]]
 name = "druid-derive"
 version = "0.2.0"
-source = "git+https://github.com/xi-editor/druid.git#a7a4bf4779975d2791e981b67c8228d6b7b3db6a"
+source = "git+https://github.com/xi-editor/druid.git#e0a3c0290399614068c434f4e65df690649f4df3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -288,7 +288,7 @@ dependencies = [
 [[package]]
 name = "druid-shell"
 version = "0.5.0"
-source = "git+https://github.com/xi-editor/druid.git#a7a4bf4779975d2791e981b67c8228d6b7b3db6a"
+source = "git+https://github.com/xi-editor/druid.git#e0a3c0290399614068c434f4e65df690649f4df3"
 dependencies = [
  "cairo-rs",
  "cfg-if",
@@ -1055,18 +1055,18 @@ dependencies = [
 
 [[package]]
 name = "piet"
-version = "0.0.9"
+version = "0.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edf84f129dc5c234fdbade3d2bea33c5f19bb9ac36a4aede638b32c64ec39bbc"
+checksum = "cc12ec839fb1931dadee762476260c068fd989d60c366dc6a0228a242c857f82"
 dependencies = [
  "kurbo",
 ]
 
 [[package]]
 name = "piet-cairo"
-version = "0.0.9"
+version = "0.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b097450b126b170cb113cc59243a4bf97ecfb0a0181fcdd734b137a19d84141"
+checksum = "fcc6ff3b4e078df5b4904b6e19efedca4142b896383ffcc53660825eb9d8191e"
 dependencies = [
  "cairo-rs",
  "piet",
@@ -1075,9 +1075,9 @@ dependencies = [
 
 [[package]]
 name = "piet-common"
-version = "0.0.9"
+version = "0.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01c71659ddcd2cb93adf377752f3d892c084b54d8ec3bcdb0725b232c232d6c6"
+checksum = "a4b532cd554b18c1931b9ca23ea6de342eb4f65cfe2288bdb1dc408ea765f6cc"
 dependencies = [
  "cairo-rs",
  "direct2d",
@@ -1092,9 +1092,9 @@ dependencies = [
 
 [[package]]
 name = "piet-direct2d"
-version = "0.0.9"
+version = "0.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0829ec341f7b46a6a1e9330f19f6bcbe9be281c70104b774f7fb109083eb8697"
+checksum = "bc87144e7af30fb0b40919e03f242309b71a063f564e68b8e36cd39ff198d6f7"
 dependencies = [
  "piet",
  "winapi 0.3.8",
@@ -1103,9 +1103,9 @@ dependencies = [
 
 [[package]]
 name = "piet-web"
-version = "0.0.9"
+version = "0.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "115138f5dd82fbc8c623ff303b123b2bf3c452676d0e1cc5fbedfa9977468ebd"
+checksum = "326c17c8d48d513b42e3b9531571c6c42785e1473b7154813b76c20c902d808d"
 dependencies = [
  "js-sys",
  "piet",
@@ -1544,6 +1544,7 @@ dependencies = [
  "lazy_static",
  "mio",
  "pin-project-lite",
+ "slab",
  "tokio-macros",
 ]
 

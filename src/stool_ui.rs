@@ -1,5 +1,6 @@
 use druid::widget::{
-    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox, TextBox, WidgetExt,
+    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox,
+    TextBox, WidgetExt,
 };
 use druid::{Color, Command, Data, LocalizedString, Widget};
 use serialport;
@@ -108,90 +109,70 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(Label::new(LocalizedString::new("Data bits:")))
         .with_spacer(3.)
         .with_child(
-            Flex::column()
-                .with_child(
-                    RadioGroup::new(vec![
-                        ("8", DruidDataBits::Eight),
-                        ("7", DruidDataBits::Seven),
-                        ("6", DruidDataBits::Six),
-                        ("5", DruidDataBits::Five),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::data_bits),
-                )
-                .cross_axis_alignment(CrossAxisAlignment::Start),
+            RadioGroup::new(vec![
+                ("8", DruidDataBits::Eight),
+                ("7", DruidDataBits::Seven),
+                ("6", DruidDataBits::Six),
+                ("5", DruidDataBits::Five),
+            ])
+            .fix_width(110.0)
+            .border(Color::grey(0.6), 2.0)
+            .rounded(5.0)
+            .lens(AppData::data_bits),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Flow control:")))
         .with_spacer(3.)
         .with_child(
-            Flex::column()
-                .with_child(
-                    RadioGroup::new(vec![
-                        (LocalizedString::new("None"), DruidFlowControl::None),
-                        (LocalizedString::new("Hardware"), DruidFlowControl::Hardware),
-                        (LocalizedString::new("Software"), DruidFlowControl::Software),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::flow_control),
-                )
-                .cross_axis_alignment(CrossAxisAlignment::Start),
+            RadioGroup::new(vec![
+                (LocalizedString::new("None"), DruidFlowControl::None),
+                (LocalizedString::new("Hardware"), DruidFlowControl::Hardware),
+                (LocalizedString::new("Software"), DruidFlowControl::Software),
+            ])
+            .fix_width(110.0)
+            .border(Color::grey(0.6), 2.0)
+            .rounded(5.0)
+            .lens(AppData::flow_control),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Parity:")))
         .with_spacer(3.)
         .with_child(
-            Flex::column()
-                .with_child(
-                    RadioGroup::new(vec![
-                        (LocalizedString::new("None"), DruidParity::None),
-                        (LocalizedString::new("Even"), DruidParity::Even),
-                        (LocalizedString::new("Odd"), DruidParity::Odd),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::parity),
-                )
-                .cross_axis_alignment(CrossAxisAlignment::Start),
+            RadioGroup::new(vec![
+                (LocalizedString::new("None"), DruidParity::None),
+                (LocalizedString::new("Even"), DruidParity::Even),
+                (LocalizedString::new("Odd"), DruidParity::Odd),
+            ])
+            .fix_width(110.0)
+            .border(Color::grey(0.6), 2.0)
+            .rounded(5.0)
+            .lens(AppData::parity),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Stop bits:")))
         .with_spacer(3.)
         .with_child(
-            Flex::column()
-                .with_child(
-                    RadioGroup::new(vec![
-                        (LocalizedString::new("One"), DruidStopBits::One),
-                        (LocalizedString::new("Two"), DruidStopBits::Two),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::stop_bits),
-                )
-                .cross_axis_alignment(CrossAxisAlignment::Start),
+            RadioGroup::new(vec![
+                (LocalizedString::new("One"), DruidStopBits::One),
+                (LocalizedString::new("Two"), DruidStopBits::Two),
+            ])
+            .fix_width(110.0)
+            .border(Color::grey(0.6), 2.0)
+            .rounded(5.0)
+            .lens(AppData::stop_bits),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Protocol:")))
         .with_spacer(3.)
         .with_child(
-            Flex::column()
-                .with_child(
-                    RadioGroup::new(vec![
-                        (LocalizedString::new("Lines"), Protocol::Lines),
-                        (LocalizedString::new("Raw"), Protocol::Raw),
-                    ])
-                    .fix_width(110.0)
-                    .border(Color::grey(0.6), 2.0)
-                    .rounded(5.0)
-                    .lens(AppData::protocol),
-                )
-                .cross_axis_alignment(CrossAxisAlignment::Start),
+            RadioGroup::new(vec![
+                (LocalizedString::new("Lines"), Protocol::Lines),
+                (LocalizedString::new("Raw"), Protocol::Raw),
+            ])
+            .fix_width(110.0)
+            .border(Color::grey(0.6), 2.0)
+            .rounded(5.0)
+            .lens(AppData::protocol),
         )
         .with_spacer(6.)
         .with_child(
