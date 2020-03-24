@@ -3,7 +3,6 @@ use druid::{ExtEventSink, Selector};
 use futures::{channel::mpsc, stream::StreamExt};
 use futures_util::sink::SinkExt;
 use std::{
-    char,
     io::Error,
     sync::{atomic::AtomicBool, atomic::Ordering, mpsc::Receiver, Arc},
     thread,
@@ -101,7 +100,7 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
 
     let mut to_shutdown = false;
     while let Some(mut config) = receiver.next().await {
-    /*loop { 
+        /*loop {
         let (config, hello) = (receiver.next().await, to_shutdown);
         if !hello{
             if let Some(config) = config {
@@ -157,17 +156,9 @@ pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMe
                                     accumulate_data.push_str(hex::encode_upper(data).as_str());
                                 }
                                 Protocol::Lines => {
-                                    // note this should not be necessary when druid will be more polish
-                                    let to_send : String = String::from_utf8_lossy(&data)
-                                                            .chars()
-                                                            .map(|c| unsafe {
-                                                                if c == char::from_u32_unchecked(0x0B) ||
-                                                                   c == char::from_u32_unchecked(0x0C) ||
-                                                                   c == char::from_u32_unchecked(0x0D) {
-                                                                        char::from_u32_unchecked(0x00)
-                                                                    } else {
-                                                                        c
-                                                            }}).collect();
+                                    // note there is still something strange in druid/piet but since last update didn't crash
+                                    // TODO report a issue
+                                    let to_send = String::from_utf8_lossy(&data).to_string();
                                     accumulate_data.push_str(to_send.as_str());
                                 }
                             }
