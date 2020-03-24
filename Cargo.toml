@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 druid = { git = "https://github.com/xi-editor/druid.git", branch = "master" }
 hex = "0.3.2"
-tokio = { version = "0.2.0", features = ["io-driver", "macros"], default-features = false }
+tokio = { version = "0.2.0", features = ["io-driver", "macros", "time"], default-features = false }
 # with tokio spawn: tokio = { version = "0.2.0", features = ["io-driver", "macros", "rt-core"], default-features = false }
 futures = "0.3.1"
 futures-util = "0.3.4"

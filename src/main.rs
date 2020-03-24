@@ -22,14 +22,20 @@ const OPEN_PORT: Selector = Selector::new("event.open-port");
 const CLOSE_PORT: Selector = Selector::new("event.close-port");
 const WRITE_PORT: Selector = Selector::new("event.write-port");
 
+const MAX_VIEW_SIZE: usize = 1024;
+
 pub struct EventHandler;
 
 #[derive(Debug, Clone, Data, Lens)]
 pub struct AppData {
-    items: Arc<Vec<String>>, // FIXME I must split GUI from Logic and GUI cant grow infinitly
-    port_name: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
-    baud_rate: String, // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
-    to_write: String,  // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
+    // FIXME I must split GUI from Logic and GUI cant grow infinitly
+    items: Arc<Vec<String>>,
+    // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
+    port_name: String,
+    // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
+    baud_rate: String,
+    // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
+    to_write: String,
     data_bits: DruidDataBits,
     flow_control: DruidFlowControl,
     parity: DruidParity,
@@ -62,6 +68,11 @@ impl Widget<AppData> for EventHandler {
                         items.push(cmd.get_object::<String>().unwrap().clone());
                         items.push("".to_string());
                     }
+                }
+
+                // FIXME not efficient to do this on Vec
+                while items.len() > MAX_VIEW_SIZE {
+                    items.remove(0);
                 }
             }
             Event::Command(cmd) if cmd.selector == READ_ITEM => {
@@ -126,6 +137,10 @@ impl Widget<AppData> for EventHandler {
                     }
                 }
 
+                // FIXME not efficient to do this on Vec
+                while items.len() > MAX_VIEW_SIZE {
+                    items.remove(0);
+                }
                 ctx.request_layout();
                 ctx.request_paint();
             }
@@ -151,11 +166,22 @@ impl Widget<AppData> for EventHandler {
                 data.sender.send(GuiMessage::Close).unwrap()
             }
             Event::Command(cmd) if cmd.selector == WRITE_PORT => {
-                // FIXME conversion
-                let bytes = data.to_write.as_bytes();
-                data.sender
-                    .send(GuiMessage::Write(bytes.to_owned()))
-                    .unwrap()
+                match data.protocol {
+                    Protocol::Raw => {
+                        let bytes: String =
+                            data.to_write.as_str().split_ascii_whitespace().collect();
+                        if let Ok(bytes) = hex::decode(bytes) {
+                            data.sender.send(GuiMessage::Write(bytes)).unwrap();
+                        } else {
+                            // TODO
+                            println!("Error");
+                        }
+                    }
+                    Protocol::Lines => {
+                        let bytes = data.to_write.as_bytes().to_owned();
+                        data.sender.send(GuiMessage::Write(bytes)).unwrap();
+                    }
+                }
             }
             _ => (),
         }
