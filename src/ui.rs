@@ -1,68 +1,13 @@
-use druid::widget::{
-    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox,
-    TextBox, WidgetExt,
+use crate::data::{
+    AppData, BaudRateLens, DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits,
+    PortNameLens, Protocol, ToWriteLens,
 };
-use druid::{Color, Command, Data, LocalizedString, Widget};
+use crate::{EventHandler, CLOSE_PORT, OPEN_PORT, WRITE_PORT};
+use druid::widget::{
+    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox, TextBox, WidgetExt,
+};
+use druid::{Color, Command, LocalizedString, Widget};
 use serialport;
-use std::vec::Vec;
-
-use crate::{AppData, EventHandler, CLOSE_PORT, OPEN_PORT, WRITE_PORT};
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-pub enum Protocol {
-    Lines,
-    Raw,
-}
-
-// FIXME should probably not be done like this
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-pub enum DruidDataBits {
-    Eight,
-    Seven,
-    Six,
-    Five,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-pub enum DruidFlowControl {
-    Hardware,
-    Software,
-    None,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-pub enum DruidParity {
-    Even,
-    Odd,
-    None,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Data)]
-pub enum DruidStopBits {
-    One,
-    Two,
-}
-// END FIXME
-
-#[derive(Debug, Clone, PartialEq, Data)]
-pub struct OpenMessage {
-    pub port_name: String,
-    pub baud_rate: String,
-    pub data_bits: DruidDataBits,
-    pub flow_control: DruidFlowControl,
-    pub parity: DruidParity,
-    pub stop_bits: DruidStopBits,
-    pub protocol: Protocol,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum GuiMessage {
-    Open(OpenMessage),
-    Close,
-    UpdateProtocol(Protocol),
-    Write(Vec<u8>),
-    Shutdown,
-}
 
 pub fn make_ui() -> impl Widget<AppData> {
     let list_ports: String = serialport::available_ports()
@@ -74,7 +19,7 @@ pub fn make_ui() -> impl Widget<AppData> {
 
     let write_panel = Flex::row()
         .with_child(SizedBox::empty().width(150.).height(40.))
-        .with_flex_child(TextBox::new().expand_width().lens(AppData::to_write), 1.0)
+        .with_flex_child(TextBox::new().expand_width().lens(ToWriteLens), 1.0)
         .with_spacer(6.)
         .with_child(
             Button::new(
@@ -100,11 +45,11 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Port:")))
         .with_spacer(3.)
-        .with_child(TextBox::new().fix_width(110.0).lens(AppData::port_name))
+        .with_child(TextBox::new().fix_width(110.0).lens(PortNameLens))
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Baudrate:")))
         .with_spacer(3.)
-        .with_child(TextBox::new().fix_width(110.0).lens(AppData::baud_rate))
+        .with_child(TextBox::new().fix_width(110.0).lens(BaudRateLens))
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Data bits:")))
         .with_spacer(3.)
@@ -204,7 +149,7 @@ pub fn make_ui() -> impl Widget<AppData> {
             Flex::row().with_child(control_panel).with_flex_child(
                 Scroll::new(
                     List::new(|| Label::new(|item: &String, _env: &_| item.to_string()))
-                        .lens(AppData::items),
+                        .lens(AppData::visual_items),
                 )
                 .expand(),
                 1.0,

@@ -1,23 +1,16 @@
+use crate::{GuiMessage, Protocol};
 use bytes::{BufMut, BytesMut};
 use druid::{ExtEventSink, Selector};
-use futures::{channel::mpsc, stream::StreamExt};
+use futures::{channel::mpsc::UnboundedReceiver, stream::StreamExt};
 use futures_util::sink::SinkExt;
-use std::{
-    io::Error,
-    sync::{atomic::AtomicBool, atomic::Ordering, mpsc::Receiver, Arc},
-    thread,
-    time::Duration,
-};
+use std::{io::Error, time::Duration};
 use tokio::time;
 use tokio_serial::{DataBits, FlowControl, Parity, Serial, SerialPortSettings, StopBits};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::{
-    DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, GuiMessage, OpenMessage, Protocol,
-};
-
 pub const READ_ITEM: Selector = Selector::new("event.read-item");
 pub const WRITE_ITEM: Selector = Selector::new("event.write-item");
+pub const IO_ERROR: Selector = Selector::new("event.io-error");
 
 pub struct RawCodec;
 
@@ -53,154 +46,95 @@ impl Encoder for RawCodec {
     }
 }
 
-pub async fn serial_loop(event_sink: &ExtEventSink, receiver_gui: Receiver<GuiMessage>) {
-    let (sender, mut receiver) = mpsc::unbounded::<OpenMessage>();
-    let (close_sender, mut close_receiver) = mpsc::unbounded::<()>();
-    let (protocol_sender, mut protocol_receiver) = mpsc::unbounded::<Protocol>();
-    let (write_sender, mut write_receiver) = mpsc::unbounded::<Vec<u8>>();
-    let (shutdown_sender, mut shutdown_receiver) = mpsc::unbounded::<()>();
-
-    let is_open = Arc::new(AtomicBool::new(false));
-
-    let cl_is_open = is_open.clone();
-    let handle = thread::spawn(move || {
-        loop {
-            if let Ok(message) = receiver_gui.recv() {
-                let local_is_open = cl_is_open.load(Ordering::SeqCst);
-                match message {
-                    GuiMessage::Open(open_msg) => {
-                        if !local_is_open {
-                            sender.unbounded_send(open_msg).unwrap();
-                        };
-                    }
-                    GuiMessage::Close => {
-                        if local_is_open {
-                            close_sender.unbounded_send(()).unwrap();
-                        }
-                    }
-                    GuiMessage::UpdateProtocol(protocol) => {
-                        if local_is_open {
-                            protocol_sender.unbounded_send(protocol).unwrap();
-                        }
-                    }
-                    GuiMessage::Write(data) => {
-                        if local_is_open {
-                            write_sender.unbounded_send(data).unwrap();
-                        }
-                    }
-                    GuiMessage::Shutdown => {
-                        // FIXME what happens currently if no port open ?
-                        shutdown_sender.unbounded_send(()).unwrap();
-                        break;
-                    }
-                };
-            }
-        }
-    });
-
+pub async fn serial_loop(
+    event_sink: &ExtEventSink,
+    mut receiver_gui: UnboundedReceiver<GuiMessage>,
+) {
     let mut to_shutdown = false;
-    while let Some(mut config) = receiver.next().await {
-        /*loop {
-        let (config, hello) = (receiver.next().await, to_shutdown);
-        if !hello{
-            if let Some(config) = config {
+    while let Some(msg_gui) = receiver_gui.next().await {
+        match msg_gui {
+            GuiMessage::Open(mut config) => {
+                let settings = SerialPortSettings {
+                    baud_rate: config.baud_rate,
+                    data_bits: DataBits::from(config.data_bits),
+                    flow_control: FlowControl::from(config.flow_control),
+                    parity: Parity::from(config.parity),
+                    stop_bits: StopBits::from(config.stop_bits),
+                    // timeout is not used cf tokio_serial
+                    timeout: Duration::from_millis(1),
+                };
 
-            }
-        }*/
-        let mut settings = SerialPortSettings::default();
+                if let Ok(port) = Serial::from_path(config.port_name.as_str(), &settings) {
+                    let (mut writer_data, mut reader_data) = RawCodec::new().framed(port).split();
 
-        settings.baud_rate = config.baud_rate.parse::<u32>().unwrap();
+                    // GUI didn't like to received a lot of small change really fast so I update it every 5 milliseconds if needed
+                    let mut refresh_gui = time::interval(Duration::from_millis(5));
+                    let mut accumulate_data = String::new();
 
-        settings.data_bits = match config.data_bits {
-            DruidDataBits::Eight => DataBits::Eight,
-            DruidDataBits::Seven => DataBits::Seven,
-            DruidDataBits::Six => DataBits::Six,
-            DruidDataBits::Five => DataBits::Five,
-        };
-
-        settings.flow_control = match config.flow_control {
-            DruidFlowControl::Hardware => FlowControl::Hardware,
-            DruidFlowControl::Software => FlowControl::Software,
-            DruidFlowControl::None => FlowControl::None,
-        };
-
-        settings.parity = match config.parity {
-            DruidParity::Even => Parity::Even,
-            DruidParity::Odd => Parity::Odd,
-            DruidParity::None => Parity::None,
-        };
-
-        settings.stop_bits = match config.stop_bits {
-            DruidStopBits::One => StopBits::One,
-            DruidStopBits::Two => StopBits::Two,
-        };
-
-        if let Ok(port) = Serial::from_path(config.port_name.as_str(), &settings) {
-            is_open.store(true, Ordering::SeqCst);
-            let (mut writer, mut reader) = RawCodec::new().framed(port).split();
-
-            // GUI didn't like to received a lot of small change really fast so I update it every 5 milliseconds if needed
-            let mut refresh_gui = time::interval(Duration::from_millis(5));
-            let mut accumulate_data = String::new();
-            loop {
-                tokio::select! {
-                    new_protocol = protocol_receiver.next() => {
-                        if let Some(new_protocol) = new_protocol {
-                            config.protocol = new_protocol;
-                        }
-                    }
-                    data = reader.next() => {
-                        if let Some(Ok(data)) = data {
-                            match config.protocol {
-                                Protocol::Raw => {
-                                    accumulate_data.push_str(hex::encode_upper(data).as_str());
-                                }
-                                Protocol::Lines => {
-                                    // note there is still something strange in druid/piet but since last update didn't crash
-                                    // TODO report a issue
-                                    let to_send = String::from_utf8_lossy(&data).to_string();
-                                    accumulate_data.push_str(to_send.as_str());
+                    loop {
+                        tokio::select! {
+                            msg_gui = receiver_gui.next() => {
+                                match msg_gui {
+                                    Some(GuiMessage::UpdateProtocol(new_protocol)) => {
+                                        config.protocol = new_protocol
+                                    }
+                                    Some(GuiMessage::Write(data)) => {
+                                        // FIXME need new line somewhere
+                                        accumulate_data.push_str(format!("> {}", hex::encode_upper(&data)).as_str());
+                                        let bytes = BytesMut::from(&data[..]);
+                                        if let Err(_) = writer_data.send(bytes).await {
+                                            event_sink.submit_command(IO_ERROR, "Cannot write data on the port", None)
+                                                      .unwrap();
+                                        }
+                                    }
+                                    Some(GuiMessage::Close) => break,
+                                    Some(GuiMessage::Shutdown) => {
+                                        to_shutdown = true;
+                                        break;
+                                    }
+                                    _ => (),
+                                };
+                            }
+                            data = reader_data.next() => {
+                                if let Some(Ok(data)) = data {
+                                    match config.protocol {
+                                        Protocol::Raw => {
+                                            accumulate_data.push_str(hex::encode_upper(data).as_str());
+                                        }
+                                        Protocol::Lines => {
+                                            // note there is still something strange in druid/piet but since last update didn't crash
+                                            // TODO report a issue
+                                            let to_send = String::from_utf8_lossy(&data).to_string();
+                                            accumulate_data.push_str(to_send.as_str());
+                                        }
+                                    }
+                                } else {
+                                    event_sink
+                                        .submit_command(IO_ERROR, "Error while reading data", None)
+                                        .unwrap();
                                 }
                             }
-                        } else {
-                            break;
+                            _ = refresh_gui.tick() => {
+                                if !accumulate_data.is_empty() {
+                                    event_sink.submit_command(WRITE_ITEM, accumulate_data.clone(), None).unwrap();
+                                    accumulate_data.clear();
+                                }
+                            }
                         }
                     }
-                    data = write_receiver.next() => {
-                        if let Some(data) = data {
-                            // FIXME need new line somewhere
-                            accumulate_data.push_str(format!("> {}", hex::encode_upper(&data)).as_str());
-                            let mut bytes = BytesMut::with_capacity(data.len());
-                            bytes.put(&data[..]);
-                            writer.send(bytes).await.unwrap();
-                        }
+
+                    if to_shutdown {
+                        break;
                     }
-                    msg = close_receiver.next() => {
-                        if let Some(_) = msg {
-                            break;
-                        }
-                    }
-                    msg = shutdown_receiver.next() => {
-                        if let Some(_) = msg {
-                            to_shutdown = true;
-                            break;
-                        }
-                    }
-                    _ = refresh_gui.tick() => {
-                        if !accumulate_data.is_empty() {
-                            event_sink.submit_command(WRITE_ITEM, accumulate_data.clone(), None).unwrap();
-                            accumulate_data.clear();
-                        }
-                    }
+                } else {
+                    // TODO error message should be localized but LocalizedString is generic and currently I don't get why
+                    event_sink
+                        .submit_command(IO_ERROR, "Cannot open the port", None)
+                        .unwrap();
                 }
             }
-
-            is_open.store(false, Ordering::SeqCst);
-            if to_shutdown {
-                break;
-            }
+            GuiMessage::Shutdown => break,
+            _ => (),
         }
     }
-
-    handle.join().unwrap();
 }

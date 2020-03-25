@@ -1,21 +1,18 @@
 mod async_serial;
-mod stool_ui;
+mod data;
+mod ui;
 
-use async_serial::{READ_ITEM, WRITE_ITEM};
+use crate::async_serial::{IO_ERROR, READ_ITEM, WRITE_ITEM};
+use crate::data::{
+    AppData, DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, OpenMessage, Protocol,
+};
+use crate::ui::make_ui;
 use druid::{
-    AppLauncher, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, Lens, LifeCycle,
-    LifeCycleCtx, LocalizedString, PaintCtx, Selector, Size, UpdateCtx, Widget, WindowDesc,
+    AppLauncher, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
+    LocalizedString, PaintCtx, Selector, Size, UpdateCtx, Widget, WindowDesc,
 };
-use std::{
-    sync::{
-        mpsc::{channel, Sender},
-        Arc,
-    },
-    thread,
-};
-use stool_ui::{
-    DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, GuiMessage, OpenMessage, Protocol,
-};
+use futures::channel::mpsc;
+use std::{sync::Arc, thread};
 use tokio::runtime::Runtime;
 
 const OPEN_PORT: Selector = Selector::new("event.open-port");
@@ -24,25 +21,22 @@ const WRITE_PORT: Selector = Selector::new("event.write-port");
 
 const MAX_VIEW_SIZE: usize = 1024;
 
-pub struct EventHandler;
+/*#[derive(Debug, Clone, Copy)]
+pub enum DataType {
+    Write,
+    Read,
+}*/
 
-#[derive(Debug, Clone, Data, Lens)]
-pub struct AppData {
-    // FIXME I must split GUI from Logic and GUI cant grow infinitly
-    items: Arc<Vec<String>>,
-    // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
-    port_name: String,
-    // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
-    baud_rate: String,
-    // FIXME data should be cheap to clone but lens can't access to Arc<String> ?
-    to_write: String,
-    data_bits: DruidDataBits,
-    flow_control: DruidFlowControl,
-    parity: DruidParity,
-    stop_bits: DruidStopBits,
-    protocol: Protocol,
-    sender: Arc<Sender<GuiMessage>>,
+#[derive(Debug, Clone, PartialEq)]
+pub enum GuiMessage {
+    Open(OpenMessage),
+    Close,
+    UpdateProtocol(Protocol),
+    Write(Vec<u8>),
+    Shutdown,
 }
+
+pub struct EventHandler;
 
 impl EventHandler {
     pub fn new() -> Self {
@@ -51,11 +45,11 @@ impl EventHandler {
 }
 
 impl Widget<AppData> for EventHandler {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut AppData, _env: &Env) {
+    fn event(&mut self, _ctx: &mut EventCtx, event: &Event, data: &mut AppData, _env: &Env) {
         match event {
             // FIXME mix READ and WRITE item is not clean currently
             Event::Command(cmd) if cmd.selector == WRITE_ITEM => {
-                let items = Arc::make_mut(&mut data.items);
+                let items = Arc::make_mut(&mut data.visual_items);
                 if items.is_empty() {
                     items.push(cmd.get_object::<String>().unwrap().clone());
                     items.push("".to_string());
@@ -76,7 +70,7 @@ impl Widget<AppData> for EventHandler {
                 }
             }
             Event::Command(cmd) if cmd.selector == READ_ITEM => {
-                let items = Arc::make_mut(&mut data.items);
+                let items = Arc::make_mut(&mut data.visual_items);
 
                 if items.is_empty() {
                     items.push("".to_string());
@@ -141,29 +135,31 @@ impl Widget<AppData> for EventHandler {
                 while items.len() > MAX_VIEW_SIZE {
                     items.remove(0);
                 }
-                ctx.request_layout();
-                ctx.request_paint();
             }
             Event::Command(cmd) if cmd.selector == OPEN_PORT => {
                 // FIXME protocol should be update on click in its RadioGroup
                 data.sender
-                    .send(GuiMessage::UpdateProtocol(data.protocol))
+                    .unbounded_send(GuiMessage::UpdateProtocol(data.protocol))
                     .unwrap();
 
-                data.sender
-                    .send(GuiMessage::Open(OpenMessage {
-                        port_name: data.port_name.clone(),
-                        baud_rate: data.baud_rate.clone(),
-                        data_bits: data.data_bits,
-                        flow_control: data.flow_control,
-                        parity: data.parity,
-                        stop_bits: data.stop_bits,
-                        protocol: data.protocol,
-                    }))
-                    .unwrap()
+                if let Ok(baud_rate) = data.baud_rate.parse::<u32>() {
+                    data.sender
+                        .unbounded_send(GuiMessage::Open(OpenMessage {
+                            port_name: (*data.port_name).clone(),
+                            baud_rate: baud_rate,
+                            data_bits: data.data_bits,
+                            flow_control: data.flow_control,
+                            parity: data.parity,
+                            stop_bits: data.stop_bits,
+                            protocol: data.protocol,
+                        }))
+                        .unwrap()
+                } else {
+                    println!("Incorrect Baudrate");
+                }
             }
             Event::Command(cmd) if cmd.selector == CLOSE_PORT => {
-                data.sender.send(GuiMessage::Close).unwrap()
+                data.sender.unbounded_send(GuiMessage::Close).unwrap()
             }
             Event::Command(cmd) if cmd.selector == WRITE_PORT => {
                 match data.protocol {
@@ -171,17 +167,26 @@ impl Widget<AppData> for EventHandler {
                         let bytes: String =
                             data.to_write.as_str().split_ascii_whitespace().collect();
                         if let Ok(bytes) = hex::decode(bytes) {
-                            data.sender.send(GuiMessage::Write(bytes)).unwrap();
+                            data.sender
+                                .unbounded_send(GuiMessage::Write(bytes))
+                                .unwrap();
                         } else {
                             // TODO
-                            println!("Error");
+                            println!("Incorrect data doesn't respect protocol format");
                         }
                     }
                     Protocol::Lines => {
                         let bytes = data.to_write.as_bytes().to_owned();
-                        data.sender.send(GuiMessage::Write(bytes)).unwrap();
+                        data.sender
+                            .unbounded_send(GuiMessage::Write(bytes))
+                            .unwrap();
                     }
                 }
+            }
+            Event::Command(cmd) if cmd.selector == IO_ERROR => {
+                // TODO should be a pop-up or something
+                let error_msg = cmd.get_object::<&str>().unwrap();
+                println!("{}", error_msg);
             }
             _ => (),
         }
@@ -205,34 +210,36 @@ impl Widget<AppData> for EventHandler {
 }
 
 fn main() {
-    let window = WindowDesc::new(stool_ui::make_ui)
+    let window = WindowDesc::new(make_ui)
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
+        .with_min_size((166., 850.))
         .window_size((500., 850.));
 
     let launcher = AppLauncher::with_window(window);
 
     let event_sink = launcher.get_external_handle();
 
-    let (sender, receiver) = channel::<GuiMessage>();
+    let (sender, receiver) = mpsc::unbounded::<GuiMessage>();
 
     thread::spawn(move || {
         // Create the runtime
-        let mut async_rt = Runtime::new().unwrap();
+        let mut async_rt = Runtime::new().expect("runtime failed");
         async_rt.block_on(async_serial::serial_loop(&event_sink, receiver));
     });
 
     launcher
         .launch(AppData {
-            items: Arc::new(vec![]),
-            port_name: "".to_string(),
-            baud_rate: "115200".to_string(),
-            to_write: "".to_string(),
+            visual_items: Arc::new(vec![]),
+            port_name: Arc::new("".to_string()),
+            baud_rate: Arc::new("115200".to_string()),
+            to_write: Arc::new("".to_string()),
             data_bits: DruidDataBits::Eight,
             flow_control: DruidFlowControl::None,
             parity: DruidParity::None,
             stop_bits: DruidStopBits::One,
             protocol: Protocol::Raw,
             sender: Arc::new(sender),
+            //raw_items: Arc::new(vec![]),
         })
         .expect("launch failed");
 }
