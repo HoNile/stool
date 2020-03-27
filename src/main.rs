@@ -2,7 +2,7 @@ mod async_serial;
 mod data;
 mod ui;
 
-use crate::async_serial::{IO_ERROR, READ_ITEM, WRITE_ITEM};
+use crate::async_serial::{IO_DATA, IO_ERROR};
 use crate::data::{
     AppData, DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, OpenMessage, Protocol,
 };
@@ -21,17 +21,16 @@ const WRITE_PORT: Selector = Selector::new("event.write-port");
 
 const MAX_VIEW_SIZE: usize = 1024;
 
-/*#[derive(Debug, Clone, Copy)]
-pub enum DataType {
-    Write,
-    Read,
-}*/
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ByteDirection {
+    Out,
+    In,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GuiMessage {
     Open(OpenMessage),
     Close,
-    UpdateProtocol(Protocol),
     Write(Vec<u8>),
     Shutdown,
 }
@@ -47,85 +46,116 @@ impl EventHandler {
 impl Widget<AppData> for EventHandler {
     fn event(&mut self, _ctx: &mut EventCtx, event: &Event, data: &mut AppData, _env: &Env) {
         match event {
-            // FIXME mix READ and WRITE item is not clean currently
-            Event::Command(cmd) if cmd.selector == WRITE_ITEM => {
+            Event::Command(cmd) if cmd.selector == IO_DATA => {
+                let io_data = cmd.get_object::<Vec<(ByteDirection, Vec<u8>)>>().unwrap();
                 let items = Arc::make_mut(&mut data.visual_items);
-                if items.is_empty() {
-                    items.push(cmd.get_object::<String>().unwrap().clone());
-                    items.push("".to_string());
-                } else {
-                    let items_idx = items.len() - 1;
-                    if items[items_idx] == "" {
-                        items[items_idx] = cmd.get_object::<String>().unwrap().clone();
-                        items.push("".to_string());
-                    } else {
-                        items.push(cmd.get_object::<String>().unwrap().clone());
-                        items.push("".to_string());
-                    }
-                }
-
-                // FIXME not efficient to do this on Vec
-                while items.len() > MAX_VIEW_SIZE {
-                    items.remove(0);
-                }
-            }
-            Event::Command(cmd) if cmd.selector == READ_ITEM => {
-                let items = Arc::make_mut(&mut data.visual_items);
-
-                if items.is_empty() {
-                    items.push("".to_string());
-                }
-
-                // Update last item until it grow to a certain size then add a new one
-                let mut items_idx = items.len() - 1;
                 let chunk_size: usize = 45;
 
-                match data.protocol {
-                    Protocol::Lines => {
-                        for line in cmd.get_object::<String>().unwrap().lines() {
-                            let item_idx_len = items[items_idx].len();
-                            if item_idx_len > 0 {
-                                items[items_idx].insert_str(item_idx_len - 1, line);
-                            } else {
-                                items[items_idx].insert_str(0, line);
+                // Init view to be able to run the same loop as if items was not empty
+                if items.is_empty() {
+                    items.push("".to_string());
+                }
+
+                if data.protocol == Protocol::Raw {
+                    for bytes in io_data.iter() {
+                        match bytes.0 {
+                            ByteDirection::Out => {
+                                let to_print = format!(
+                                    "> {}",
+                                    hex::encode_upper(&bytes.1)
+                                        .chars()
+                                        .enumerate()
+                                        .flat_map(|(i, c)| {
+                                            if i != 0 && i % 2 == 0 {
+                                                Some(' ')
+                                            } else {
+                                                None
+                                            }
+                                            .into_iter()
+                                            .chain(std::iter::once(c))
+                                        })
+                                        .collect::<String>()
+                                );
+                                if items.last().unwrap().is_empty() {
+                                    items.last_mut().unwrap().push_str(&to_print);
+                                } else {
+                                    items.push(to_print);
+                                }
+
+                                items.push("".to_string());
                             }
-                            items.push("".to_string());
-                            items_idx += 1;
+                            ByteDirection::In => {
+                                let new_data = hex::encode_upper(&bytes.1);
+                                let old_data: String =
+                                    items.last().unwrap().split_ascii_whitespace().collect();
+
+                                let mut to_insert = old_data
+                                    .chars()
+                                    .chain(new_data.chars())
+                                    .enumerate()
+                                    .flat_map(|(i, c)| {
+                                        if i != 0 && i % 2 == 0 {
+                                            Some(' ')
+                                        } else {
+                                            None
+                                        }
+                                        .into_iter()
+                                        .chain(std::iter::once(c))
+                                    });
+
+                                let mut collector =
+                                    Vec::with_capacity((new_data.len() / chunk_size) + 2);
+                                loop {
+                                    let tmp: String = (&mut to_insert).take(chunk_size).collect();
+                                    if tmp == "" {
+                                        break;
+                                    }
+                                    collector.push(tmp);
+                                }
+
+                                for s in collector {
+                                    let last_item = items.last_mut().unwrap();
+                                    *last_item = s;
+                                    items.push("".to_string());
+                                }
+                                if items[items.len() - 2].len() < chunk_size {
+                                    items.pop();
+                                }
+                            }
                         }
                     }
-                    Protocol::Raw => {
-                        let old_data: String = items[items_idx].split_ascii_whitespace().collect();
-                        let new_data = cmd.get_object::<String>().unwrap();
-
-                        let mut to_insert = old_data
-                            .chars()
-                            .chain(new_data.chars())
-                            .enumerate()
-                            .flat_map(|(i, c)| {
-                                if i != 0 && i % 2 == 0 {
-                                    Some(' ')
+                } else if data.protocol == Protocol::Lines {
+                    for bytes in io_data.iter() {
+                        match bytes.0 {
+                            ByteDirection::Out => {
+                                let to_print = format!("> {}", String::from_utf8_lossy(&bytes.1));
+                                if items.last().unwrap().is_empty() {
+                                    items.last_mut().unwrap().push_str(&to_print);
                                 } else {
-                                    None
+                                    items.push(to_print);
                                 }
-                                .into_iter()
-                                .chain(std::iter::once(c))
-                            });
 
-                        let mut collector = Vec::with_capacity((new_data.len() / chunk_size) + 2);
-                        loop {
-                            let tmp: String = (&mut to_insert).take(chunk_size).collect();
-                            if tmp == "" {
-                                break;
-                            }
-                            collector.push(tmp);
-                        }
-
-                        items[items_idx].clear();
-                        for s in collector {
-                            items[items_idx] = s;
-                            if items[items_idx].len() == chunk_size {
                                 items.push("".to_string());
-                                items_idx += 1;
+                            }
+                            ByteDirection::In => {
+                                if !items.last().unwrap().is_empty() {
+                                    items.push("".to_string());
+                                }
+
+                                for line in String::from_utf8_lossy(&bytes.1).lines() {
+                                    let line = line.to_string();
+                                    let mut to_insert = line.chars();
+                                    loop {
+                                        let items_len = items.len() - 1;
+                                        let tmp: String =
+                                            (&mut to_insert).take(chunk_size).collect();
+                                        if tmp == "" {
+                                            break;
+                                        }
+                                        items[items_len].push_str(&tmp);
+                                        items.push("".to_string());
+                                    }
+                                }
                             }
                         }
                     }
@@ -135,13 +165,12 @@ impl Widget<AppData> for EventHandler {
                 while items.len() > MAX_VIEW_SIZE {
                     items.remove(0);
                 }
+
+                // TODO later
+                // let raw_items = Arc::make_mut(&mut data.raw_items);
+                // raw_items.append(&mut io_data.clone());
             }
             Event::Command(cmd) if cmd.selector == OPEN_PORT => {
-                // FIXME protocol should be update on click in its RadioGroup
-                data.sender
-                    .unbounded_send(GuiMessage::UpdateProtocol(data.protocol))
-                    .unwrap();
-
                 if let Ok(baud_rate) = data.baud_rate.parse::<u32>() {
                     data.sender
                         .unbounded_send(GuiMessage::Open(OpenMessage {
@@ -239,7 +268,7 @@ fn main() {
             stop_bits: DruidStopBits::One,
             protocol: Protocol::Raw,
             sender: Arc::new(sender),
-            //raw_items: Arc::new(vec![]),
+            raw_items: Arc::new(vec![]),
         })
         .expect("launch failed");
 }

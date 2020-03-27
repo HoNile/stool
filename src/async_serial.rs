@@ -1,4 +1,4 @@
-use crate::{GuiMessage, Protocol};
+use crate::{ByteDirection, GuiMessage};
 use bytes::{BufMut, BytesMut};
 use druid::{ExtEventSink, Selector};
 use futures::{channel::mpsc::UnboundedReceiver, stream::StreamExt};
@@ -8,8 +8,7 @@ use tokio::time;
 use tokio_serial::{DataBits, FlowControl, Parity, Serial, SerialPortSettings, StopBits};
 use tokio_util::codec::{Decoder, Encoder};
 
-pub const READ_ITEM: Selector = Selector::new("event.read-item");
-pub const WRITE_ITEM: Selector = Selector::new("event.write-item");
+pub const IO_DATA: Selector = Selector::new("event.io-data");
 pub const IO_ERROR: Selector = Selector::new("event.io-error");
 
 pub struct RawCodec;
@@ -53,7 +52,7 @@ pub async fn serial_loop(
     let mut to_shutdown = false;
     while let Some(msg_gui) = receiver_gui.next().await {
         match msg_gui {
-            GuiMessage::Open(mut config) => {
+            GuiMessage::Open(config) => {
                 let settings = SerialPortSettings {
                     baud_rate: config.baud_rate,
                     data_bits: DataBits::from(config.data_bits),
@@ -65,26 +64,29 @@ pub async fn serial_loop(
                 };
 
                 if let Ok(port) = Serial::from_path(config.port_name.as_str(), &settings) {
-                    let (mut writer_data, mut reader_data) = RawCodec::new().framed(port).split();
+                    let (mut sender_data, mut receiver_data) = RawCodec::new().framed(port).split();
 
+                    // WARNING all the system refresh_gui/accumulate_data make it is easy to make mistake
                     // GUI didn't like to received a lot of small change really fast so I update it every 5 milliseconds if needed
                     let mut refresh_gui = time::interval(Duration::from_millis(5));
-                    let mut accumulate_data = String::new();
+                    let mut accumulate_data = Vec::<(ByteDirection, Vec<u8>)>::new();
+                    // changing refresh_gui period make the next await be ready so I need this bool to not update it in loop
+                    let mut fast_refresh = true;
 
                     loop {
                         tokio::select! {
                             msg_gui = receiver_gui.next() => {
                                 match msg_gui {
-                                    Some(GuiMessage::UpdateProtocol(new_protocol)) => {
-                                        config.protocol = new_protocol
-                                    }
                                     Some(GuiMessage::Write(data)) => {
-                                        // FIXME need new line somewhere
-                                        accumulate_data.push_str(format!("> {}", hex::encode_upper(&data)).as_str());
+                                        accumulate_data.push((ByteDirection::Out, data.clone()));
                                         let bytes = BytesMut::from(&data[..]);
-                                        if let Err(_) = writer_data.send(bytes).await {
+                                        if let Err(_) = sender_data.send(bytes).await {
                                             event_sink.submit_command(IO_ERROR, "Cannot write data on the port", None)
                                                       .unwrap();
+                                        }
+                                        if !fast_refresh {
+                                            refresh_gui = time::interval(Duration::from_millis(5));
+                                            fast_refresh = true;
                                         }
                                     }
                                     Some(GuiMessage::Close) => break,
@@ -95,18 +97,20 @@ pub async fn serial_loop(
                                     _ => (),
                                 };
                             }
-                            data = reader_data.next() => {
+                            data = receiver_data.next() => {
                                 if let Some(Ok(data)) = data {
-                                    match config.protocol {
-                                        Protocol::Raw => {
-                                            accumulate_data.push_str(hex::encode_upper(data).as_str());
+                                    if let Some(last) = accumulate_data.last_mut() {
+                                        if last.0 == ByteDirection::In {
+                                            last.1.extend_from_slice(&data);
+                                        } else {
+                                            accumulate_data.push((ByteDirection::In, Vec::from(&data[..])));
                                         }
-                                        Protocol::Lines => {
-                                            // note there is still something strange in druid/piet but since last update didn't crash
-                                            // TODO report a issue
-                                            let to_send = String::from_utf8_lossy(&data).to_string();
-                                            accumulate_data.push_str(to_send.as_str());
-                                        }
+                                    } else {
+                                        accumulate_data.push((ByteDirection::In, Vec::from(&data[..])));
+                                    }
+                                    if !fast_refresh {
+                                        refresh_gui = time::interval(Duration::from_millis(5));
+                                        fast_refresh = true;
                                     }
                                 } else {
                                     event_sink
@@ -116,8 +120,14 @@ pub async fn serial_loop(
                             }
                             _ = refresh_gui.tick() => {
                                 if !accumulate_data.is_empty() {
-                                    event_sink.submit_command(WRITE_ITEM, accumulate_data.clone(), None).unwrap();
+                                    event_sink.submit_command(IO_DATA, accumulate_data.clone(), None).unwrap();
                                     accumulate_data.clear();
+                                } else {
+                                    // Avoid working if nothing to do
+                                    if fast_refresh {
+                                        refresh_gui = time::interval(Duration::from_secs(86_400));
+                                        fast_refresh = false
+                                    }
                                 }
                             }
                         }
@@ -128,6 +138,10 @@ pub async fn serial_loop(
                     }
                 } else {
                     // TODO error message should be localized but LocalizedString is generic and currently I don't get why
+                    // maybe send a label ?
+                    // event_sink
+                    //    .submit_command(IO_ERROR, Label::new(LocalizedString::new("Cannot open the port")), None)
+                    //    .unwrap();
                     event_sink
                         .submit_command(IO_ERROR, "Cannot open the port", None)
                         .unwrap();

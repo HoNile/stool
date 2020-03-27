@@ -1,9 +1,8 @@
+use crate::{ByteDirection, GuiMessage};
 use druid::{Data, Lens};
 use futures::channel::mpsc::UnboundedSender;
 use std::sync::Arc;
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
-
-use crate::GuiMessage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Data)]
 pub enum Protocol {
@@ -102,7 +101,7 @@ pub struct AppData {
     pub stop_bits: DruidStopBits,
     pub protocol: Protocol,
     pub sender: Arc<UnboundedSender<GuiMessage>>,
-    //pub raw_items: Arc<Vec<(DataType, bytes::BytesMut)>>,
+    pub raw_items: Arc<Vec<(ByteDirection, Vec<u8>)>>,
 }
 
 pub struct PortNameLens;
