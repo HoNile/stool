@@ -22,13 +22,11 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_flex_child(TextBox::new().expand_width().lens(ToWriteLens), 1.0)
         .with_spacer(6.)
         .with_child(
-            Button::new(
-                LocalizedString::new("Send"),
-                |ctx, data: &mut AppData, _env| {
+            Button::new(LocalizedString::new("Send"))
+                .on_click(|ctx, data: &mut AppData, _env| {
                     ctx.submit_command(Command::new(WRITE_PORT, data.clone()), None);
-                },
-            )
-            .fix_width(110.0),
+                })
+                .fix_width(110.0),
         )
         .with_child(SizedBox::empty().width(6.))
         .cross_axis_alignment(CrossAxisAlignment::Center)
@@ -121,23 +119,19 @@ pub fn make_ui() -> impl Widget<AppData> {
         )
         .with_spacer(6.)
         .with_child(
-            Button::new(
-                LocalizedString::new("Open port"),
-                |ctx, data: &mut AppData, _env| {
+            Button::new(LocalizedString::new("Open port"))
+                .on_click(|ctx, data: &mut AppData, _env| {
                     ctx.submit_command(Command::new(OPEN_PORT, data.clone()), None);
-                },
-            )
-            .fix_width(110.0),
+                })
+                .fix_width(110.0),
         )
         .with_spacer(6.)
         .with_child(
-            Button::new(
-                LocalizedString::new("Close port"),
-                |ctx, data: &mut AppData, _env| {
+            Button::new(LocalizedString::new("Close port"))
+                .on_click(|ctx, data: &mut AppData, _env| {
                     ctx.submit_command(Command::new(CLOSE_PORT, data.clone()), None);
-                },
-            )
-            .fix_width(110.0),
+                })
+                .fix_width(110.0),
         )
         .with_flex_spacer(1.0)
         .cross_axis_alignment(CrossAxisAlignment::Center)
