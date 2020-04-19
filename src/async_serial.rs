@@ -4,7 +4,6 @@ use druid::{ExtEventSink, Selector};
 use futures::{channel::mpsc::UnboundedReceiver, stream::StreamExt};
 use futures_util::sink::SinkExt;
 use std::{io::Error, time::Duration};
-use tokio::time;
 use tokio_serial::{DataBits, FlowControl, Parity, Serial, SerialPortSettings, StopBits};
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -63,30 +62,41 @@ pub async fn serial_loop(
                     timeout: Duration::from_millis(1),
                 };
 
-                if let Ok(port) = Serial::from_path(config.port_name.as_str(), &settings) {
+                if let Ok(mut port) = Serial::from_path(config.port_name.as_str(), &settings) {
                     let (mut sender_data, mut receiver_data) = RawCodec::new().framed(port).split();
 
-                    // WARNING all the system refresh_gui/accumulate_data make it is easy to make mistake
-                    // GUI didn't like to received a lot of small change really fast so I update it every 5 milliseconds if needed
-                    let mut refresh_gui = time::interval(Duration::from_millis(5));
-                    let mut accumulate_data = Vec::<(ByteDirection, Vec<u8>)>::new();
-                    // changing refresh_gui period make the next await be ready so I need this bool to not update it in loop
-                    let mut fast_refresh = true;
+                    let mut error_reading = false;
 
                     loop {
                         tokio::select! {
                             msg_gui = receiver_gui.next() => {
                                 match msg_gui {
+                                    Some(GuiMessage::Open(config)) => {
+                                        let settings = SerialPortSettings {
+                                            baud_rate: config.baud_rate,
+                                            data_bits: DataBits::from(config.data_bits),
+                                            flow_control: FlowControl::from(config.flow_control),
+                                            parity: Parity::from(config.parity),
+                                            stop_bits: StopBits::from(config.stop_bits),
+                                            // timeout is not used cf tokio_serial
+                                            timeout: Duration::from_millis(1),
+                                        };
+
+                                        if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings){
+                                            port = port_reconnect;
+                                            let tmp = RawCodec::new().framed(port).split();
+                                            sender_data =  tmp.0;
+                                            receiver_data = tmp.1;
+                                            error_reading = false;
+                                        };
+                                    }
                                     Some(GuiMessage::Write(data)) => {
-                                        accumulate_data.push((ByteDirection::Out, data.clone()));
                                         let bytes = BytesMut::from(&data[..]);
                                         if let Err(_) = sender_data.send(bytes).await {
                                             event_sink.submit_command(IO_ERROR, "Cannot write data on the port", None)
                                                       .unwrap();
-                                        }
-                                        if !fast_refresh {
-                                            refresh_gui = time::interval(Duration::from_millis(5));
-                                            fast_refresh = true;
+                                        } else {
+                                            event_sink.submit_command(IO_DATA, (ByteDirection::Out, data.clone()), None).unwrap();
                                         }
                                     }
                                     Some(GuiMessage::Close) => break,
@@ -99,37 +109,22 @@ pub async fn serial_loop(
                             }
                             data = receiver_data.next() => {
                                 if let Some(Ok(data)) = data {
-                                    if let Some(last) = accumulate_data.last_mut() {
-                                        if last.0 == ByteDirection::In {
-                                            last.1.extend_from_slice(&data);
-                                        } else {
-                                            accumulate_data.push((ByteDirection::In, Vec::from(&data[..])));
-                                        }
-                                    } else {
-                                        accumulate_data.push((ByteDirection::In, Vec::from(&data[..])));
-                                    }
-                                    if !fast_refresh {
-                                        refresh_gui = time::interval(Duration::from_millis(5));
-                                        fast_refresh = true;
-                                    }
+                                    event_sink.submit_command(IO_DATA, (ByteDirection::In, Vec::from(&data[..])), None).unwrap();
                                 } else {
-                                    // FIXME this should not be send in loop example port disconected
-                                    // TODO check if reconnect the port is possible
-                                    event_sink
-                                        .submit_command(IO_ERROR, "Error while reading data", None)
-                                        .unwrap();
-                                }
-                            }
-                            _ = refresh_gui.tick() => {
-                                if !accumulate_data.is_empty() {
-                                    event_sink.submit_command(IO_DATA, accumulate_data.clone(), None).unwrap();
-                                    accumulate_data.clear();
-                                } else {
-                                    // Avoid working if nothing to do
-                                    if fast_refresh {
-                                        refresh_gui = time::interval(Duration::from_secs(86_400));
-                                        fast_refresh = false
+                                    if !error_reading {
+                                        event_sink
+                                            .submit_command(IO_ERROR, "Error while reading data", None)
+                                            .unwrap();
+                                        error_reading = true;
                                     }
+
+                                    if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings){
+                                        port = port_reconnect;
+                                        let tmp = RawCodec::new().framed(port).split();
+                                        sender_data =  tmp.0;
+                                        receiver_data = tmp.1;
+                                        error_reading = false;
+                                    };
                                 }
                             }
                         }
@@ -150,6 +145,9 @@ pub async fn serial_loop(
                 }
             }
             GuiMessage::Shutdown => break,
+            GuiMessage::Write(_) => event_sink
+                .submit_command(IO_ERROR, "Cannot write data port not open", None)
+                .unwrap(),
             _ => (),
         }
     }
