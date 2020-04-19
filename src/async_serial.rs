@@ -113,6 +113,8 @@ pub async fn serial_loop(
                                         fast_refresh = true;
                                     }
                                 } else {
+                                    // FIXME this should not be send in loop example port disconected
+                                    // TODO check if reconnect the port is possible
                                     event_sink
                                         .submit_command(IO_ERROR, "Error while reading data", None)
                                         .unwrap();

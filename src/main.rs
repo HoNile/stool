@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"] // Remove console
+
 mod async_serial;
 mod data;
 mod ui;
@@ -35,6 +37,118 @@ pub enum GuiMessage {
     Shutdown,
 }
 
+fn display_raw(
+    io_data: &Vec<(ByteDirection, Vec<u8>)>,
+    items: &mut Vec<String>,
+    chunk_size: usize,
+) {
+    for bytes in io_data.iter() {
+        match bytes.0 {
+            ByteDirection::Out => {
+                let to_print = format!(
+                    "> {}",
+                    hex::encode_upper(&bytes.1)
+                        .chars()
+                        .enumerate()
+                        .flat_map(|(i, c)| {
+                            if i != 0 && i % 2 == 0 {
+                                Some(' ')
+                            } else {
+                                None
+                            }
+                            .into_iter()
+                            .chain(std::iter::once(c))
+                        })
+                        .collect::<String>()
+                );
+                if items.last().unwrap().is_empty() {
+                    items.last_mut().unwrap().push_str(&to_print);
+                } else {
+                    items.push(to_print);
+                }
+
+                items.push("".to_string());
+            }
+            ByteDirection::In => {
+                let new_data = hex::encode_upper(&bytes.1);
+                let old_data: String = items.last().unwrap().split_ascii_whitespace().collect();
+
+                let mut to_insert = old_data
+                    .chars()
+                    .chain(new_data.chars())
+                    .enumerate()
+                    .flat_map(|(i, c)| {
+                        if i != 0 && i % 2 == 0 {
+                            Some(' ')
+                        } else {
+                            None
+                        }
+                        .into_iter()
+                        .chain(std::iter::once(c))
+                    });
+
+                let mut collector = Vec::with_capacity((new_data.len() / chunk_size) + 2);
+                loop {
+                    let tmp: String = (&mut to_insert).take(chunk_size).collect();
+                    if tmp == "" {
+                        break;
+                    }
+                    collector.push(tmp);
+                }
+
+                for s in collector {
+                    let last_item = items.last_mut().unwrap();
+                    *last_item = s;
+                    items.push("".to_string());
+                }
+                if items[items.len() - 2].len() < chunk_size {
+                    items.pop();
+                }
+            }
+        }
+    }
+}
+
+fn display_lines(
+    io_data: &Vec<(ByteDirection, Vec<u8>)>,
+    items: &mut Vec<String>,
+    chunk_size: usize,
+) {
+    for bytes in io_data.iter() {
+        match bytes.0 {
+            ByteDirection::Out => {
+                let to_print = format!("> {}", String::from_utf8_lossy(&bytes.1));
+                if items.last().unwrap().is_empty() {
+                    items.last_mut().unwrap().push_str(&to_print);
+                } else {
+                    items.push(to_print);
+                }
+
+                items.push("".to_string());
+            }
+            ByteDirection::In => {
+                if !items.last().unwrap().is_empty() {
+                    items.push("".to_string());
+                }
+
+                for line in String::from_utf8_lossy(&bytes.1).lines() {
+                    let line = line.to_string();
+                    let mut to_insert = line.chars();
+                    loop {
+                        let items_len = items.len() - 1;
+                        let tmp: String = (&mut to_insert).take(chunk_size).collect();
+                        if tmp == "" {
+                            break;
+                        }
+                        items[items_len].push_str(&tmp);
+                        items.push("".to_string());
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub struct EventHandler;
 
 impl EventHandler {
@@ -47,6 +161,8 @@ impl Widget<AppData> for EventHandler {
     fn event(&mut self, _ctx: &mut EventCtx, event: &Event, data: &mut AppData, _env: &Env) {
         match event {
             Event::Command(cmd) if cmd.selector == IO_DATA => {
+                //let start = Instant::now();
+
                 let io_data = cmd.get_object::<Vec<(ByteDirection, Vec<u8>)>>().unwrap();
                 let items = Arc::make_mut(&mut data.visual_items);
                 let chunk_size: usize = 45;
@@ -56,117 +172,20 @@ impl Widget<AppData> for EventHandler {
                     items.push("".to_string());
                 }
 
-                if data.protocol == Protocol::Raw {
-                    for bytes in io_data.iter() {
-                        match bytes.0 {
-                            ByteDirection::Out => {
-                                let to_print = format!(
-                                    "> {}",
-                                    hex::encode_upper(&bytes.1)
-                                        .chars()
-                                        .enumerate()
-                                        .flat_map(|(i, c)| {
-                                            if i != 0 && i % 2 == 0 {
-                                                Some(' ')
-                                            } else {
-                                                None
-                                            }
-                                            .into_iter()
-                                            .chain(std::iter::once(c))
-                                        })
-                                        .collect::<String>()
-                                );
-                                if items.last().unwrap().is_empty() {
-                                    items.last_mut().unwrap().push_str(&to_print);
-                                } else {
-                                    items.push(to_print);
-                                }
-
-                                items.push("".to_string());
-                            }
-                            ByteDirection::In => {
-                                let new_data = hex::encode_upper(&bytes.1);
-                                let old_data: String =
-                                    items.last().unwrap().split_ascii_whitespace().collect();
-
-                                let mut to_insert = old_data
-                                    .chars()
-                                    .chain(new_data.chars())
-                                    .enumerate()
-                                    .flat_map(|(i, c)| {
-                                        if i != 0 && i % 2 == 0 {
-                                            Some(' ')
-                                        } else {
-                                            None
-                                        }
-                                        .into_iter()
-                                        .chain(std::iter::once(c))
-                                    });
-
-                                let mut collector =
-                                    Vec::with_capacity((new_data.len() / chunk_size) + 2);
-                                loop {
-                                    let tmp: String = (&mut to_insert).take(chunk_size).collect();
-                                    if tmp == "" {
-                                        break;
-                                    }
-                                    collector.push(tmp);
-                                }
-
-                                for s in collector {
-                                    let last_item = items.last_mut().unwrap();
-                                    *last_item = s;
-                                    items.push("".to_string());
-                                }
-                                if items[items.len() - 2].len() < chunk_size {
-                                    items.pop();
-                                }
-                            }
-                        }
-                    }
-                } else if data.protocol == Protocol::Lines {
-                    for bytes in io_data.iter() {
-                        match bytes.0 {
-                            ByteDirection::Out => {
-                                let to_print = format!("> {}", String::from_utf8_lossy(&bytes.1));
-                                if items.last().unwrap().is_empty() {
-                                    items.last_mut().unwrap().push_str(&to_print);
-                                } else {
-                                    items.push(to_print);
-                                }
-
-                                items.push("".to_string());
-                            }
-                            ByteDirection::In => {
-                                if !items.last().unwrap().is_empty() {
-                                    items.push("".to_string());
-                                }
-
-                                for line in String::from_utf8_lossy(&bytes.1).lines() {
-                                    let line = line.to_string();
-                                    let mut to_insert = line.chars();
-                                    loop {
-                                        let items_len = items.len() - 1;
-                                        let tmp: String =
-                                            (&mut to_insert).take(chunk_size).collect();
-                                        if tmp == "" {
-                                            break;
-                                        }
-                                        items[items_len].push_str(&tmp);
-                                        items.push("".to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
+                match data.protocol {
+                    Protocol::Raw => display_raw(io_data, items, chunk_size),
+                    Protocol::Lines => display_lines(io_data, items, chunk_size),
                 }
 
                 // FIXME not efficient to do this on Vec
-                while items.len() > MAX_VIEW_SIZE {
-                    items.remove(0);
+                let items_len = items.len();
+                if items_len > MAX_VIEW_SIZE {
+                    let keep_items = items.split_off(items_len - MAX_VIEW_SIZE);
+                    *items = keep_items;
                 }
+                //println!("Debug: {} µs", start.elapsed().as_micros());
 
-                // TODO later
+                // TODO later I will want to store some raw_data to clear the visual and re-print ?
                 // let raw_items = Arc::make_mut(&mut data.raw_items);
                 // raw_items.append(&mut io_data.clone());
             }
