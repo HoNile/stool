@@ -252,11 +252,13 @@ fn main() {
 
     let (sender, receiver) = mpsc::unbounded::<GuiMessage>();
 
-    thread::spawn(move || {
+    let runtime_join_handle = thread::spawn(move || {
         // Create the runtime
         let mut async_rt = Runtime::new().expect("runtime failed");
         async_rt.block_on(async_serial::serial_loop(&event_sink, receiver));
     });
+
+    let sender_shutdown = sender.clone();
 
     launcher
         .launch(AppData {
@@ -273,4 +275,7 @@ fn main() {
             raw_items: Arc::new(vec![]),
         })
         .expect("launch failed");
+
+    sender_shutdown.unbounded_send(GuiMessage::Shutdown).unwrap();
+    runtime_join_handle.join().unwrap();
 }
