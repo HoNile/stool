@@ -1,6 +1,9 @@
+#![windows_subsystem = "windows"]
+
 mod async_serial;
 mod data;
 mod ui;
+mod widget_controller;
 
 use crate::async_serial::{IO_DATA, IO_ERROR};
 use crate::data::{
@@ -149,7 +152,6 @@ impl Widget<AppData> for EventHandler {
             Event::Command(cmd) if cmd.selector == IO_DATA => {
                 let io_data = cmd.get_object::<(ByteDirection, Vec<u8>)>().unwrap();
                 let items = Arc::make_mut(&mut data.visual_items);
-                let chunk_size: usize = 45;
 
                 // Init view to be able to run the same loop as if items was not empty
                 if items.is_empty() {
@@ -157,8 +159,8 @@ impl Widget<AppData> for EventHandler {
                 }
 
                 match data.protocol {
-                    Protocol::Raw => display_raw(io_data, items, chunk_size),
-                    Protocol::Lines => display_lines(io_data, items, chunk_size),
+                    Protocol::Raw => display_raw(io_data, items, data.line_size),
+                    Protocol::Lines => display_lines(io_data, items, data.line_size),
                 }
 
                 // FIXME not efficient to do this on Vec
@@ -167,6 +169,8 @@ impl Widget<AppData> for EventHandler {
                     let keep_items = items.split_off(items_len - MAX_VIEW_SIZE);
                     *items = keep_items;
                 }
+
+                data.status = "".to_string();
 
                 // TODO later I will want to store some raw_data to clear the visual and re-print ?
                 // let raw_items = Arc::make_mut(&mut data.raw_items);
@@ -184,40 +188,40 @@ impl Widget<AppData> for EventHandler {
                             stop_bits: data.stop_bits,
                             protocol: data.protocol,
                         }))
-                        .unwrap()
+                        .unwrap();
+                    data.status = "".to_string();
                 } else {
-                    println!("Incorrect Baudrate");
+                    data.status = "Incorrect Baudrate".to_string();
                 }
             }
             Event::Command(cmd) if cmd.selector == CLOSE_PORT => {
-                data.sender.unbounded_send(GuiMessage::Close).unwrap()
+                data.sender.unbounded_send(GuiMessage::Close).unwrap();
+                data.status = "".to_string();
             }
-            Event::Command(cmd) if cmd.selector == WRITE_PORT => {
-                match data.protocol {
-                    Protocol::Raw => {
-                        let bytes: String =
-                            data.to_write.as_str().split_ascii_whitespace().collect();
-                        if let Ok(bytes) = hex::decode(bytes) {
-                            data.sender
-                                .unbounded_send(GuiMessage::Write(bytes))
-                                .unwrap();
-                        } else {
-                            // TODO
-                            println!("Incorrect data doesn't respect protocol format");
-                        }
-                    }
-                    Protocol::Lines => {
-                        let bytes = data.to_write.as_bytes().to_owned();
+            Event::Command(cmd) if cmd.selector == WRITE_PORT => match data.protocol {
+                Protocol::Raw => {
+                    let bytes: String = data.to_write.as_str().split_ascii_whitespace().collect();
+                    if let Ok(bytes) = hex::decode(bytes) {
                         data.sender
                             .unbounded_send(GuiMessage::Write(bytes))
                             .unwrap();
+                        data.status = "".to_string();
+                    } else {
+                        data.status = "Incorrect data doesn't respect protocol format".to_string();
                     }
                 }
-            }
+                Protocol::Lines => {
+                    let bytes = data.to_write.as_bytes().to_owned();
+                    data.sender
+                        .unbounded_send(GuiMessage::Write(bytes))
+                        .unwrap();
+                    data.status = "".to_string();
+                }
+            },
             Event::Command(cmd) if cmd.selector == IO_ERROR => {
                 // TODO should be a pop-up or something
                 let error_msg = cmd.get_object::<&str>().unwrap();
-                println!("{}", error_msg);
+                data.status = error_msg.to_string();
             }
             _ => (),
         }
@@ -243,8 +247,8 @@ impl Widget<AppData> for EventHandler {
 fn main() {
     let window = WindowDesc::new(make_ui)
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
-        .with_min_size((166., 850.))
-        .window_size((500., 850.));
+        .with_min_size((166., 865.))
+        .window_size((500., 865.));
 
     let launcher = AppLauncher::with_window(window);
 
@@ -273,9 +277,13 @@ fn main() {
             protocol: Protocol::Raw,
             sender: Arc::new(sender),
             raw_items: Arc::new(vec![]),
+            line_size: 0,
+            status: "".to_string(),
         })
         .expect("launch failed");
 
-    sender_shutdown.unbounded_send(GuiMessage::Shutdown).unwrap();
+    sender_shutdown
+        .unbounded_send(GuiMessage::Shutdown)
+        .unwrap();
     runtime_join_handle.join().unwrap();
 }

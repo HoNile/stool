@@ -9,6 +9,8 @@ use druid::widget::{
 use druid::{Color, Command, LocalizedString, Widget};
 use serialport;
 
+use crate::widget_controller::RootWindowController;
+
 pub fn make_ui() -> impl Widget<AppData> {
     let list_ports: String = serialport::available_ports()
         .unwrap()
@@ -151,4 +153,6 @@ pub fn make_ui() -> impl Widget<AppData> {
             1.0,
         )
         .with_child(write_panel)
+        .with_child(Label::new(|item: &String, _env: &_| item.to_string()).lens(AppData::status))
+        .controller(RootWindowController::default())
 }

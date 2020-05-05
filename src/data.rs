@@ -102,6 +102,8 @@ pub struct AppData {
     pub protocol: Protocol,
     pub sender: Arc<UnboundedSender<GuiMessage>>,
     pub raw_items: Arc<Vec<(ByteDirection, Vec<u8>)>>,
+    pub line_size: usize,
+    pub status: String,
 }
 
 pub struct PortNameLens;
