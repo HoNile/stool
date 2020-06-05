@@ -149,8 +149,8 @@ impl EventHandler {
 impl Widget<AppData> for EventHandler {
     fn event(&mut self, _ctx: &mut EventCtx, event: &Event, data: &mut AppData, _env: &Env) {
         match event {
-            Event::Command(cmd) if cmd.selector == IO_DATA => {
-                let io_data = cmd.get_object::<(ByteDirection, Vec<u8>)>().unwrap();
+            Event::Command(cmd) if cmd.is(IO_DATA) => {
+                let io_data = cmd.get_unchecked(IO_DATA);
                 let items = Arc::make_mut(&mut data.visual_items);
 
                 // Init view to be able to run the same loop as if items was not empty
@@ -176,7 +176,7 @@ impl Widget<AppData> for EventHandler {
                 // let raw_items = Arc::make_mut(&mut data.raw_items);
                 // raw_items.append(&mut io_data.clone());
             }
-            Event::Command(cmd) if cmd.selector == OPEN_PORT => {
+            Event::Command(cmd) if cmd.is(OPEN_PORT) => {
                 if let Ok(baud_rate) = data.baud_rate.parse::<u32>() {
                     data.sender
                         .unbounded_send(GuiMessage::Open(OpenMessage {
@@ -194,11 +194,11 @@ impl Widget<AppData> for EventHandler {
                     data.status = "Incorrect Baudrate".to_string();
                 }
             }
-            Event::Command(cmd) if cmd.selector == CLOSE_PORT => {
+            Event::Command(cmd) if cmd.is(CLOSE_PORT) => {
                 data.sender.unbounded_send(GuiMessage::Close).unwrap();
                 data.status = "".to_string();
             }
-            Event::Command(cmd) if cmd.selector == WRITE_PORT => match data.protocol {
+            Event::Command(cmd) if cmd.is(WRITE_PORT) => match data.protocol {
                 Protocol::Raw => {
                     let bytes: String = data.to_write.as_str().split_ascii_whitespace().collect();
                     if let Ok(bytes) = hex::decode(bytes) {
@@ -218,9 +218,9 @@ impl Widget<AppData> for EventHandler {
                     data.status = "".to_string();
                 }
             },
-            Event::Command(cmd) if cmd.selector == IO_ERROR => {
+            Event::Command(cmd) if cmd.is(IO_ERROR) => {
                 // TODO should be a pop-up or something
-                let error_msg = cmd.get_object::<&str>().unwrap();
+                let error_msg = cmd.get_unchecked(IO_ERROR);
                 data.status = error_msg.to_string();
             }
             _ => (),

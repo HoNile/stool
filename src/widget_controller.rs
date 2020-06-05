@@ -1,7 +1,7 @@
 //! Controller widgets
 
 use druid::widget::Controller;
-use druid::{Command, Env, Event, EventCtx, UpdateCtx, Widget};
+use druid::{Env, Event, EventCtx, UpdateCtx, Widget};
 
 use crate::AppData;
 

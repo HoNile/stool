@@ -7,8 +7,8 @@ use std::{io::Error, time::Duration};
 use tokio_serial::{DataBits, FlowControl, Parity, Serial, SerialPortSettings, StopBits};
 use tokio_util::codec::{Decoder, Encoder};
 
-pub const IO_DATA: Selector = Selector::new("event.io-data");
-pub const IO_ERROR: Selector = Selector::new("event.io-error");
+pub const IO_DATA: Selector<(ByteDirection, Vec<u8>)> = Selector::new("event.io-data");
+pub const IO_ERROR: Selector<&str> = Selector::new("event.io-error");
 
 pub struct RawCodec;
 

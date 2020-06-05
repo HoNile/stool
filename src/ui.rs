@@ -6,7 +6,7 @@ use crate::{EventHandler, CLOSE_PORT, OPEN_PORT, WRITE_PORT};
 use druid::widget::{
     Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox, TextBox, WidgetExt,
 };
-use druid::{Color, Command, LocalizedString, Widget};
+use druid::{Color, LocalizedString, Widget};
 use serialport;
 
 use crate::widget_controller::RootWindowController;
@@ -25,8 +25,8 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_spacer(6.)
         .with_child(
             Button::new(LocalizedString::new("Send"))
-                .on_click(|ctx, data: &mut AppData, _env| {
-                    ctx.submit_command(Command::new(WRITE_PORT, data.clone()), None);
+                .on_click(|ctx, _data, _env| {
+                    ctx.submit_command(WRITE_PORT, None);
                 })
                 .fix_width(110.0),
         )
@@ -122,16 +122,16 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_spacer(6.)
         .with_child(
             Button::new(LocalizedString::new("Open port"))
-                .on_click(|ctx, data: &mut AppData, _env| {
-                    ctx.submit_command(Command::new(OPEN_PORT, data.clone()), None);
+                .on_click(|ctx, _data, _env| {
+                    ctx.submit_command(OPEN_PORT, None);
                 })
                 .fix_width(110.0),
         )
         .with_spacer(6.)
         .with_child(
             Button::new(LocalizedString::new("Close port"))
-                .on_click(|ctx, data: &mut AppData, _env| {
-                    ctx.submit_command(Command::new(CLOSE_PORT, data.clone()), None);
+                .on_click(|ctx, _data, _env| {
+                    ctx.submit_command(CLOSE_PORT, None);
                 })
                 .fix_width(110.0),
         )
