@@ -10,6 +10,62 @@ use druid::widget::{
 use druid::{Color, FontDescriptor, FontFamily, LocalizedString, Widget};
 use serialport;
 
+use druid::commands::{COPY, CUT, PASTE};
+use druid::keyboard_types::KeyState::Down;
+use druid::widget::Controller;
+use druid::Code::{KeyC, KeyV, KeyX};
+use druid::{Env, Event, EventCtx, Modifiers, UpdateCtx};
+
+#[derive(Debug, Default)]
+pub struct ToWriteController;
+
+impl<W: Widget<AppData>> Controller<AppData, W> for ToWriteController {
+    fn event(
+        &mut self,
+        child: &mut W,
+        ctx: &mut EventCtx,
+        event: &Event,
+        data: &mut AppData,
+        env: &Env,
+    ) {
+        match event {
+            // FIXME probably not correct in all case
+            Event::KeyDown(key_event) => {
+                if key_event.state == Down
+                    && key_event.code == KeyX
+                    && key_event.mods & Modifiers::CONTROL == Modifiers::CONTROL
+                {
+                    ctx.submit_command(CUT);
+                } else if key_event.state == Down
+                    && key_event.code == KeyC
+                    && key_event.mods & Modifiers::CONTROL == Modifiers::CONTROL
+                {
+                    ctx.submit_command(COPY);
+                } else if key_event.state == Down
+                    && key_event.code == KeyV
+                    && key_event.mods & Modifiers::CONTROL == Modifiers::CONTROL
+                {
+                    ctx.submit_command(PASTE);
+                } else {
+                    child.event(ctx, event, data, env);
+                }
+            }
+            other => child.event(ctx, other, data, env),
+        }
+    }
+
+    fn update(
+        &mut self,
+        child: &mut W,
+        ctx: &mut UpdateCtx,
+        old_data: &AppData,
+        data: &AppData,
+        env: &Env,
+    ) {
+        child.update(ctx, old_data, data, env);
+    }
+}
+
 pub fn make_ui() -> impl Widget<AppData> {
     let list_ports: String = serialport::available_ports()
         .unwrap()
@@ -19,8 +75,13 @@ pub fn make_ui() -> impl Widget<AppData> {
         .join(" ");
 
     let write_panel = Flex::row()
-        .with_child(SizedBox::empty().width(150.).height(40.))
-        .with_flex_child(TextBox::new().expand_width().lens(ToWriteLens), 1.0)
+        .with_flex_child(
+            TextBox::new()
+                .expand_width()
+                .lens(ToWriteLens)
+                .controller(ToWriteController::default()),
+            1.0,
+        )
         .with_spacer(6.)
         .with_child(
             Button::new(LocalizedString::new("Send"))
@@ -29,7 +90,7 @@ pub fn make_ui() -> impl Widget<AppData> {
                 })
                 .fix_width(110.0),
         )
-        .with_child(SizedBox::empty().width(6.))
+        .with_child(SizedBox::empty().width(6.).height(40.))
         .cross_axis_alignment(CrossAxisAlignment::Center)
         .background(Color::rgb8(0x1a, 0x1a, 0x1a));
 
@@ -37,7 +98,7 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(
             Label::new(LocalizedString::new("Available ports:"))
                 .fix_width(110.0)
-                .padding((20., 20., 20., 0.)),
+                .padding((20., 5., 20., 0.)),
         )
         .with_spacer(3.)
         .with_child(Label::new(list_ports).fix_width(110.0))
@@ -142,20 +203,26 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(EventHandler::new().fix_width(0.0).fix_height(0.0))
         .with_flex_child(
             Flex::row().with_child(control_panel).with_flex_child(
-                Scroll::new(
-                    RawLabel::new()
-                        .with_font(FontDescriptor::new(FontFamily::MONOSPACE).with_size(18.))
-                        .with_line_break_mode(LineBreaking::WordWrap)
-                        .lens(AppData::output)
-                        .expand_width(),
-                )
-                .vertical()
-                .expand(),
+                Flex::column()
+                    .with_flex_child(
+                        Scroll::new(
+                            RawLabel::new()
+                                .with_font(
+                                    FontDescriptor::new(FontFamily::MONOSPACE).with_size(18.),
+                                )
+                                .with_line_break_mode(LineBreaking::WordWrap)
+                                .lens(AppData::output)
+                                .expand_width(),
+                        )
+                        .vertical()
+                        .expand(),
+                        1.0,
+                    )
+                    .with_child(write_panel),
                 1.0,
             ),
             1.0,
         )
-        .with_child(write_panel)
         .with_child(
             Label::new(|item: &String, _env: &_| item.to_string())
                 .fix_height(17.0)

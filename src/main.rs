@@ -10,11 +10,10 @@ use crate::data::{
 };
 use crate::ui::make_ui;
 use druid::piet::TextStorage;
-use druid::platform_menus;
 use druid::text::RichText;
 use druid::{
     AppLauncher, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx,
-    LocalizedString, MenuDesc, PaintCtx, Selector, Size, UpdateCtx, Widget, WindowDesc,
+    LocalizedString, PaintCtx, Selector, Size, UpdateCtx, Widget, WindowDesc,
 };
 use futures::channel::mpsc;
 use std::{sync::Arc, thread};
@@ -24,7 +23,7 @@ const OPEN_PORT: Selector = Selector::new("event.open-port");
 const CLOSE_PORT: Selector = Selector::new("event.close-port");
 const WRITE_PORT: Selector = Selector::new("event.write-port");
 
-const MAX_VIEW_SIZE: usize = 1024 * 512;
+const MAX_VIEW_SIZE: usize = 1024 * 180;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ByteDirection {
@@ -240,17 +239,10 @@ impl Widget<AppData> for EventHandler {
 }
 
 fn main() {
-    // FIXME menu is temporary, it's needed to copy/paste to work
     let window = WindowDesc::new(make_ui)
-        .menu(
-            MenuDesc::empty()
-                .append(platform_menus::common::cut())
-                .append(platform_menus::common::copy())
-                .append(platform_menus::common::paste()),
-        )
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
-        .with_min_size((170., 930.))
-        .window_size((500., 930.));
+        .with_min_size((170., 813.))
+        .window_size((500., 813.));
 
     let launcher = AppLauncher::with_window(window);
 
