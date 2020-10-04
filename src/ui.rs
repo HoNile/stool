@@ -4,12 +4,11 @@ use crate::data::{
 };
 use crate::{EventHandler, CLOSE_PORT, OPEN_PORT, WRITE_PORT};
 use druid::widget::{
-    Button, CrossAxisAlignment, Flex, Label, List, RadioGroup, Scroll, SizedBox, TextBox, WidgetExt,
+    Button, CrossAxisAlignment, Flex, Label, LineBreaking, RadioGroup, RawLabel, Scroll, SizedBox,
+    TextBox, WidgetExt,
 };
-use druid::{Color, LocalizedString, Widget};
+use druid::{Color, FontDescriptor, FontFamily, LocalizedString, Widget};
 use serialport;
-
-use crate::widget_controller::RootWindowController;
 
 pub fn make_ui() -> impl Widget<AppData> {
     let list_ports: String = serialport::available_ports()
@@ -26,7 +25,7 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(
             Button::new(LocalizedString::new("Send"))
                 .on_click(|ctx, _data, _env| {
-                    ctx.submit_command(WRITE_PORT, None);
+                    ctx.submit_command(WRITE_PORT);
                 })
                 .fix_width(110.0),
         )
@@ -111,7 +110,7 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_spacer(3.)
         .with_child(
             RadioGroup::new(vec![
-                (LocalizedString::new("Lines"), Protocol::Lines),
+                (LocalizedString::new("Text"), Protocol::Text),
                 (LocalizedString::new("Raw"), Protocol::Raw),
             ])
             .fix_width(110.0)
@@ -123,7 +122,7 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(
             Button::new(LocalizedString::new("Open port"))
                 .on_click(|ctx, _data, _env| {
-                    ctx.submit_command(OPEN_PORT, None);
+                    ctx.submit_command(OPEN_PORT);
                 })
                 .fix_width(110.0),
         )
@@ -131,7 +130,7 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(
             Button::new(LocalizedString::new("Close port"))
                 .on_click(|ctx, _data, _env| {
-                    ctx.submit_command(CLOSE_PORT, None);
+                    ctx.submit_command(CLOSE_PORT);
                 })
                 .fix_width(110.0),
         )
@@ -144,15 +143,22 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_flex_child(
             Flex::row().with_child(control_panel).with_flex_child(
                 Scroll::new(
-                    List::new(|| Label::new(|item: &String, _env: &_| item.to_string()))
-                        .lens(AppData::visual_items),
+                    RawLabel::new()
+                        .with_font(FontDescriptor::new(FontFamily::MONOSPACE).with_size(18.))
+                        .with_line_break_mode(LineBreaking::WordWrap)
+                        .lens(AppData::output)
+                        .expand_width(),
                 )
+                .vertical()
                 .expand(),
                 1.0,
             ),
             1.0,
         )
         .with_child(write_panel)
-        .with_child(Label::new(|item: &String, _env: &_| item.to_string()).lens(AppData::status))
-        .controller(RootWindowController::default())
+        .with_child(
+            Label::new(|item: &String, _env: &_| item.to_string())
+                .fix_height(17.0)
+                .lens(AppData::status),
+        )
 }

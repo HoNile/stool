@@ -1,4 +1,5 @@
-use crate::{ByteDirection, GuiMessage};
+use crate::GuiMessage;
+use druid::text::RichText;
 use druid::{Data, Lens};
 use futures::channel::mpsc::UnboundedSender;
 use std::sync::Arc;
@@ -6,7 +7,7 @@ use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
 
 #[derive(Debug, Clone, Copy, PartialEq, Data)]
 pub enum Protocol {
-    Lines,
+    Text,
     Raw,
 }
 
@@ -91,9 +92,9 @@ pub struct OpenMessage {
 
 #[derive(Debug, Clone, Data, Lens)]
 pub struct AppData {
-    pub visual_items: Arc<Vec<String>>,
+    pub output: RichText,
     pub port_name: Arc<String>,
-    pub baud_rate: Arc<String>,
+    pub baud_rate: u32,
     pub to_write: Arc<String>,
     pub data_bits: DruidDataBits,
     pub flow_control: DruidFlowControl,
@@ -101,8 +102,6 @@ pub struct AppData {
     pub stop_bits: DruidStopBits,
     pub protocol: Protocol,
     pub sender: Arc<UnboundedSender<GuiMessage>>,
-    pub raw_items: Arc<Vec<(ByteDirection, Vec<u8>)>>,
-    pub line_size: usize,
     pub status: String,
 }
 
@@ -122,11 +121,26 @@ pub struct BaudRateLens;
 
 impl Lens<AppData, String> for BaudRateLens {
     fn with<R, F: FnOnce(&String) -> R>(&self, data: &AppData, f: F) -> R {
-        f(&data.baud_rate)
+        let mut string = data.baud_rate.to_string();
+        if data.baud_rate == 0 {
+            string = "".into();
+        }
+        f(&string)
     }
 
     fn with_mut<R, F: FnOnce(&mut String) -> R>(&self, data: &mut AppData, f: F) -> R {
-        f(Arc::make_mut(&mut data.baud_rate))
+        let mut string = data.baud_rate.to_string();
+        if data.baud_rate == 0 {
+            string = "".into();
+        }
+        let v = f(&mut string);
+        string.retain(|c| c.is_digit(10));
+        if string.is_empty() {
+            data.baud_rate = 0;
+        } else {
+            data.baud_rate = string.parse().unwrap_or(data.baud_rate);
+        }
+        v
     }
 }
 

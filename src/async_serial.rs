@@ -1,6 +1,6 @@
 use crate::{ByteDirection, GuiMessage};
 use bytes::{BufMut, BytesMut};
-use druid::{ExtEventSink, Selector};
+use druid::{ExtEventSink, Selector, Target};
 use futures::{channel::mpsc::UnboundedReceiver, stream::StreamExt};
 use futures_util::sink::SinkExt;
 use std::{io::Error, time::Duration};
@@ -93,10 +93,10 @@ pub async fn serial_loop(
                                     Some(GuiMessage::Write(data)) => {
                                         let bytes = BytesMut::from(&data[..]);
                                         if let Err(_) = sender_data.send(bytes).await {
-                                            event_sink.submit_command(IO_ERROR, "Cannot write data on the port", None)
+                                            event_sink.submit_command(IO_ERROR, "Cannot write data on the port", Target::Global)
                                                       .unwrap();
                                         } else {
-                                            event_sink.submit_command(IO_DATA, (ByteDirection::Out, data.clone()), None).unwrap();
+                                            event_sink.submit_command(IO_DATA, (ByteDirection::Out, data.clone()), Target::Global).unwrap();
                                         }
                                     }
                                     Some(GuiMessage::Close) => break,
@@ -109,11 +109,11 @@ pub async fn serial_loop(
                             }
                             data = receiver_data.next() => {
                                 if let Some(Ok(data)) = data {
-                                    event_sink.submit_command(IO_DATA, (ByteDirection::In, Vec::from(&data[..])), None).unwrap();
+                                    event_sink.submit_command(IO_DATA, (ByteDirection::In, Vec::from(&data[..])), Target::Global).unwrap();
                                 } else {
                                     if !error_reading {
                                         event_sink
-                                            .submit_command(IO_ERROR, "Error while reading data", None)
+                                            .submit_command(IO_ERROR, "Error while reading data", Target::Global)
                                             .unwrap();
                                         error_reading = true;
                                     }
@@ -140,13 +140,13 @@ pub async fn serial_loop(
                     //    .submit_command(IO_ERROR, Label::new(LocalizedString::new("Cannot open the port")), None)
                     //    .unwrap();
                     event_sink
-                        .submit_command(IO_ERROR, "Cannot open the port", None)
+                        .submit_command(IO_ERROR, "Cannot open the port", Target::Global)
                         .unwrap();
                 }
             }
             GuiMessage::Shutdown => break,
             GuiMessage::Write(_) => event_sink
-                .submit_command(IO_ERROR, "Cannot write data port not open", None)
+                .submit_command(IO_ERROR, "Cannot write data port not open", Target::Global)
                 .unwrap(),
             _ => (),
         }
