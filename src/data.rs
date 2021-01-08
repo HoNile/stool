@@ -2,6 +2,9 @@ use crate::GuiMessage;
 use druid::text::RichText;
 use druid::{Data, Lens};
 use futures::channel::mpsc::UnboundedSender;
+use std::collections::VecDeque;
+use std::fmt;
+use std::ops::Range;
 use std::sync::Arc;
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
 
@@ -30,6 +33,17 @@ impl From<DruidDataBits> for DataBits {
     }
 }
 
+impl fmt::Display for DruidDataBits {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DruidDataBits::Eight => write!(f, "8"),
+            DruidDataBits::Seven => write!(f, "7"),
+            DruidDataBits::Six => write!(f, "6"),
+            DruidDataBits::Five => write!(f, "5"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Data)]
 pub enum DruidFlowControl {
     Hardware,
@@ -43,6 +57,16 @@ impl From<DruidFlowControl> for FlowControl {
             DruidFlowControl::Hardware => FlowControl::Hardware,
             DruidFlowControl::Software => FlowControl::Software,
             DruidFlowControl::None => FlowControl::None,
+        }
+    }
+}
+
+impl fmt::Display for DruidFlowControl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DruidFlowControl::Hardware => write!(f, "Hardware"),
+            DruidFlowControl::Software => write!(f, "Software"),
+            DruidFlowControl::None => write!(f, "None"),
         }
     }
 }
@@ -64,6 +88,16 @@ impl From<DruidParity> for Parity {
     }
 }
 
+impl fmt::Display for DruidParity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DruidParity::Even => write!(f, "Even"),
+            DruidParity::Odd => write!(f, "Odd"),
+            DruidParity::None => write!(f, "None"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Data)]
 pub enum DruidStopBits {
     One,
@@ -79,6 +113,15 @@ impl From<DruidStopBits> for StopBits {
     }
 }
 
+impl fmt::Display for DruidStopBits {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DruidStopBits::One => write!(f, "One"),
+            DruidStopBits::Two => write!(f, "Two"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Data)]
 pub struct OpenMessage {
     pub port_name: String,
@@ -89,10 +132,18 @@ pub struct OpenMessage {
     pub stop_bits: DruidStopBits,
     pub protocol: Protocol,
 }
+#[derive(Debug, Clone, PartialEq, Data)]
+pub enum OutputTag {
+    TextIn,
+    TextOut,
+    RawIn,
+    RawOut,
+}
 
 #[derive(Debug, Clone, Data, Lens)]
 pub struct AppData {
     pub output: RichText,
+    pub output_attr: Arc<VecDeque<(Range<usize>, OutputTag)>>,
     pub port_name: Arc<String>,
     pub baud_rate: u32,
     pub to_write: Arc<String>,
@@ -114,33 +165,6 @@ impl Lens<AppData, String> for PortNameLens {
 
     fn with_mut<R, F: FnOnce(&mut String) -> R>(&self, data: &mut AppData, f: F) -> R {
         f(Arc::make_mut(&mut data.port_name))
-    }
-}
-
-pub struct BaudRateLens;
-
-impl Lens<AppData, String> for BaudRateLens {
-    fn with<R, F: FnOnce(&String) -> R>(&self, data: &AppData, f: F) -> R {
-        let mut string = data.baud_rate.to_string();
-        if data.baud_rate == 0 {
-            string = "".into();
-        }
-        f(&string)
-    }
-
-    fn with_mut<R, F: FnOnce(&mut String) -> R>(&self, data: &mut AppData, f: F) -> R {
-        let mut string = data.baud_rate.to_string();
-        if data.baud_rate == 0 {
-            string = "".into();
-        }
-        let v = f(&mut string);
-        string.retain(|c| c.is_digit(10));
-        if string.is_empty() {
-            data.baud_rate = 0;
-        } else {
-            data.baud_rate = string.parse().unwrap_or(data.baud_rate);
-        }
-        v
     }
 }
 
