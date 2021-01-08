@@ -3,8 +3,11 @@ use std::sync::Arc;
 use crate::data::AppData;
 use crate::CLEAR_DATA;
 
-use druid::commands::{COPY, CUT, PASTE};
-use druid::widget::Controller;
+use druid::{
+    commands::{COPY, CUT, PASTE},
+    Command, Target,
+};
+use druid::{widget::Controller, FileDialogOptions, FileSpec};
 use druid::{ContextMenu, Data, MenuDesc, MenuItem};
 use druid::{Env, Event, EventCtx, HotKey, KbKey, LocalizedString, SysMods, UpdateCtx, Widget};
 
@@ -17,7 +20,9 @@ impl<T, W: Widget<T>> Controller<T, W> for ContextMenuController {
     fn event(&mut self, child: &mut W, ctx: &mut EventCtx, event: &Event, data: &mut T, env: &Env) {
         match event {
             Event::MouseDown(ref mouse) if mouse.button.is_right() => {
-                let menu = ContextMenu::new(make_context_menu::<AppData>(), mouse.pos);
+                let mut pos = mouse.pos;
+                pos.x += 150.; // Note: 150 is the size from the left menu bar
+                let menu = ContextMenu::new(make_context_menu::<AppData>(), pos);
                 ctx.show_context_menu(menu);
             }
             _ => child.event(ctx, event, data, env),
@@ -26,7 +31,24 @@ impl<T, W: Widget<T>> Controller<T, W> for ContextMenuController {
 }
 
 fn make_context_menu<T: Data>() -> MenuDesc<T> {
-    MenuDesc::empty().append(MenuItem::new(LocalizedString::new("Clear"), CLEAR_DATA))
+    let save_dialog_options = FileDialogOptions::new()
+        .allowed_types(vec![FileSpec::new("Text file", &["txt"])])
+        .default_type(FileSpec::new("Text file", &["txt"]))
+        .default_name(String::from("MyFile.txt"))
+        .name_label("Target")
+        .title("Choose a target for this lovely file")
+        .button_text("Export");
+
+    MenuDesc::empty()
+        .append(MenuItem::new(LocalizedString::new("Clear"), CLEAR_DATA))
+        .append(MenuItem::new(
+            LocalizedString::new("Export"),
+            Command::new(
+                druid::commands::SHOW_SAVE_PANEL,
+                save_dialog_options.clone(),
+                Target::Auto,
+            ),
+        ))
 }
 
 #[derive(Debug, Default)]
