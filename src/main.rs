@@ -392,7 +392,7 @@ impl Widget<AppData> for EventHandler {
 fn main() {
     let window = WindowDesc::new(make_ui)
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
-        .with_min_size((165., 765.))
+        .with_min_size((164., 765.))
         .window_size((500., 765.));
 
     let launcher = AppLauncher::with_window(window);
