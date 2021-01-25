@@ -1,16 +1,18 @@
-use crate::widgets::NumericFormatter;
+use crate::widgets::{Dropdown, ListSelect, NumericFormatter, DROP};
 use crate::{
     data::{
-        AppData, DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, PortNameLens,
-        Protocol, ToWriteLens,
+        AppData, DruidDataBits, DruidFlowControl, DruidParity, DruidStopBits, Protocol, ToWriteLens,
     },
-    widgets::{ContextMenuController, PortTextBoxController, TextBoxController},
+    widgets::{ContextMenuController, TextBoxController},
 };
 use crate::{EventHandler, CLOSE_PORT, OPEN_PORT, WRITE_PORT};
 
-use druid::widget::{
-    Button, CrossAxisAlignment, Flex, Label, LineBreaking, RadioGroup, RawLabel, Scroll, SizedBox,
-    TextBox, WidgetExt,
+use druid::{
+    widget::{
+        Button, CrossAxisAlignment, Flex, Label, LineBreaking, RawLabel, Scroll, SizedBox, TextBox,
+        WidgetExt,
+    },
+    Env, EventCtx,
 };
 use druid::{Color, FontDescriptor, FontFamily, LocalizedString, Widget};
 
@@ -45,10 +47,30 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(Label::new(LocalizedString::new("Port:")))
         .with_spacer(3.)
         .with_child(
-            TextBox::new()
-                .fix_width(110.0)
-                .lens(PortNameLens)
-                .controller(PortTextBoxController::default()),
+            Dropdown::new(
+                Flex::row()
+                    .with_flex_spacer(1.)
+                    .with_child(
+                        Label::new(|p: &String, _: &Env| format!("{}", p))
+                            .background(Color::rgb8(58, 58, 58))
+                            .fix_width(80.0),
+                    )
+                    .with_child(
+                        Button::new("v")
+                            .on_click(|ctx: &mut EventCtx, _, _| ctx.submit_notification(DROP)),
+                    )
+                    .with_flex_spacer(1.),
+                |_, _| {
+                    let available_ports = serialport::available_ports()
+                        .unwrap()
+                        .iter()
+                        .map(|pinfo| (pinfo.port_name.clone(), pinfo.port_name.clone()))
+                        .collect::<Vec<(String, String)>>();
+                    Scroll::new(ListSelect::new(available_ports)).vertical()
+                },
+            )
+            .align_left()
+            .lens(AppData::port_name),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Baudrate:")))
@@ -64,72 +86,147 @@ pub fn make_ui() -> impl Widget<AppData> {
         .with_child(Label::new(LocalizedString::new("Data bits:")))
         .with_spacer(3.)
         .with_child(
-            RadioGroup::new(vec![
-                ("8", DruidDataBits::Eight),
-                ("7", DruidDataBits::Seven),
-                ("6", DruidDataBits::Six),
-                ("5", DruidDataBits::Five),
-            ])
-            .fix_width(110.0)
-            .border(Color::grey(0.6), 2.0)
-            .rounded(5.0)
+            Dropdown::new(
+                Flex::row()
+                    .with_flex_spacer(1.)
+                    .with_child(
+                        Label::new(|db: &DruidDataBits, _: &Env| format!("{}", db))
+                            .background(Color::rgb8(58, 58, 58))
+                            .fix_width(80.0),
+                    )
+                    .with_child(
+                        Button::new("v")
+                            .on_click(|ctx: &mut EventCtx, _, _| ctx.submit_notification(DROP)),
+                    )
+                    .with_flex_spacer(1.),
+                |_, _| {
+                    Scroll::new(ListSelect::new(vec![
+                        ("8", DruidDataBits::Eight),
+                        ("7", DruidDataBits::Seven),
+                        ("6", DruidDataBits::Six),
+                        ("5", DruidDataBits::Five),
+                    ]))
+                    .vertical()
+                },
+            )
+            .align_left()
             .lens(AppData::data_bits),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Flow control:")))
         .with_spacer(3.)
         .with_child(
-            RadioGroup::new(vec![
-                (LocalizedString::new("None"), DruidFlowControl::None),
-                (LocalizedString::new("Hardware"), DruidFlowControl::Hardware),
-                (LocalizedString::new("Software"), DruidFlowControl::Software),
-            ])
-            .fix_width(110.0)
-            .border(Color::grey(0.6), 2.0)
-            .rounded(5.0)
+            Dropdown::new(
+                Flex::row()
+                    .with_flex_spacer(1.)
+                    .with_child(
+                        Label::new(|fc: &DruidFlowControl, _: &Env| format!("{}", fc))
+                            .background(Color::rgb8(58, 58, 58))
+                            .fix_width(80.0),
+                    )
+                    .with_child(
+                        Button::new("v")
+                            .on_click(|ctx: &mut EventCtx, _, _| ctx.submit_notification(DROP)),
+                    )
+                    .with_flex_spacer(1.),
+                |_, _| {
+                    Scroll::new(ListSelect::new(vec![
+                        ("None", DruidFlowControl::None),
+                        ("Hardware", DruidFlowControl::Hardware),
+                        ("Software", DruidFlowControl::Software),
+                    ]))
+                    .vertical()
+                },
+            )
+            .align_left()
             .lens(AppData::flow_control),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Parity:")))
         .with_spacer(3.)
         .with_child(
-            RadioGroup::new(vec![
-                (LocalizedString::new("None"), DruidParity::None),
-                (LocalizedString::new("Even"), DruidParity::Even),
-                (LocalizedString::new("Odd"), DruidParity::Odd),
-            ])
-            .fix_width(110.0)
-            .border(Color::grey(0.6), 2.0)
-            .rounded(5.0)
+            Dropdown::new(
+                Flex::row()
+                    .with_flex_spacer(1.)
+                    .with_child(
+                        Label::new(|p: &DruidParity, _: &Env| format!("{}", p))
+                            .background(Color::rgb8(58, 58, 58))
+                            .fix_width(80.0),
+                    )
+                    .with_child(
+                        Button::new("v")
+                            .on_click(|ctx: &mut EventCtx, _, _| ctx.submit_notification(DROP)),
+                    )
+                    .with_flex_spacer(1.),
+                |_, _| {
+                    Scroll::new(ListSelect::new(vec![
+                        ("None", DruidParity::None),
+                        ("Even", DruidParity::Even),
+                        ("Odd", DruidParity::Odd),
+                    ]))
+                    .vertical()
+                },
+            )
+            .align_left()
             .lens(AppData::parity),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Stop bits:")))
         .with_spacer(3.)
         .with_child(
-            RadioGroup::new(vec![
-                (LocalizedString::new("One"), DruidStopBits::One),
-                (LocalizedString::new("Two"), DruidStopBits::Two),
-            ])
-            .fix_width(110.0)
-            .border(Color::grey(0.6), 2.0)
-            .rounded(5.0)
+            Dropdown::new(
+                Flex::row()
+                    .with_flex_spacer(1.)
+                    .with_child(
+                        Label::new(|sb: &DruidStopBits, _: &Env| format!("{}", sb))
+                            .background(Color::rgb8(58, 58, 58))
+                            .fix_width(80.0),
+                    )
+                    .with_child(
+                        Button::new("v")
+                            .on_click(|ctx: &mut EventCtx, _, _| ctx.submit_notification(DROP)),
+                    )
+                    .with_flex_spacer(1.),
+                |_, _| {
+                    Scroll::new(ListSelect::new(vec![
+                        ("One", DruidStopBits::One),
+                        ("Two", DruidStopBits::Two),
+                    ]))
+                    .vertical()
+                },
+            )
+            .align_left()
             .lens(AppData::stop_bits),
         )
         .with_spacer(6.)
         .with_child(Label::new(LocalizedString::new("Protocol:")))
         .with_spacer(3.)
         .with_child(
-            RadioGroup::new(vec![
-                (LocalizedString::new("Text"), Protocol::Text),
-                (LocalizedString::new("Raw"), Protocol::Raw),
-            ])
-            .fix_width(110.0)
-            .border(Color::grey(0.6), 2.0)
-            .rounded(5.0)
+            Dropdown::new(
+                Flex::row()
+                    .with_flex_spacer(1.)
+                    .with_child(
+                        Label::new(|p: &Protocol, _: &Env| format!("{:?}", p))
+                            .background(Color::rgb8(58, 58, 58))
+                            .fix_width(80.0),
+                    )
+                    .with_child(
+                        Button::new("v")
+                            .on_click(|ctx: &mut EventCtx, _, _| ctx.submit_notification(DROP)),
+                    )
+                    .with_flex_spacer(1.),
+                |_, _| {
+                    Scroll::new(ListSelect::new(vec![
+                        ("Text", Protocol::Text),
+                        ("Raw", Protocol::Raw),
+                    ]))
+                    .vertical()
+                },
+            )
+            .align_left()
             .lens(AppData::protocol),
         )
-        .with_spacer(6.)
+        .with_flex_spacer(1.0)
         .with_child(
             Button::new(LocalizedString::new("Open port"))
                 .on_click(|ctx, _data, _env| {
@@ -145,7 +242,7 @@ pub fn make_ui() -> impl Widget<AppData> {
                 })
                 .fix_width(110.0),
         )
-        .with_flex_spacer(1.0)
+        .with_spacer(7.0)
         .background(Color::rgb8(0x1a, 0x1a, 0x1a))
         .fix_width(150.0);
 

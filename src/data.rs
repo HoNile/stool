@@ -144,7 +144,7 @@ pub enum OutputTag {
 pub struct AppData {
     pub output: RichText,
     pub output_attr: Arc<VecDeque<(Range<usize>, OutputTag)>>,
-    pub port_name: Arc<String>,
+    pub port_name: String,
     pub baud_rate: u32,
     pub to_write: Arc<String>,
     pub data_bits: DruidDataBits,
@@ -156,6 +156,8 @@ pub struct AppData {
     pub status: String,
 }
 
+/*
+TODO check why Arc<String> doesn't work with dropdown
 pub struct PortNameLens;
 
 impl Lens<AppData, String> for PortNameLens {
@@ -166,7 +168,7 @@ impl Lens<AppData, String> for PortNameLens {
     fn with_mut<R, F: FnOnce(&mut String) -> R>(&self, data: &mut AppData, f: F) -> R {
         f(Arc::make_mut(&mut data.port_name))
     }
-}
+}*/
 
 pub struct ToWriteLens;
 

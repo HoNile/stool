@@ -319,7 +319,7 @@ impl Widget<AppData> for EventHandler {
             Event::Command(cmd) if cmd.is(OPEN_PORT) => {
                 data.sender
                     .unbounded_send(GuiMessage::Open(OpenMessage {
-                        port_name: (*data.port_name).clone(),
+                        port_name: data.port_name.clone(),
                         baud_rate: data.baud_rate,
                         data_bits: data.data_bits,
                         flow_control: data.flow_control,
@@ -331,7 +331,7 @@ impl Widget<AppData> for EventHandler {
 
                 data.status = format!(
                     "{}, {}, {}, {}, {}",
-                    (*data.port_name).clone(),
+                    data.port_name,
                     data.baud_rate,
                     data.flow_control,
                     data.parity,
@@ -392,8 +392,8 @@ impl Widget<AppData> for EventHandler {
 fn main() {
     let window = WindowDesc::new(make_ui)
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
-        .with_min_size((164., 765.))
-        .window_size((500., 765.));
+        .with_min_size((164., 495.))
+        .window_size((400., 495.));
 
     let launcher = AppLauncher::with_window(window);
 
@@ -414,7 +414,7 @@ fn main() {
         .launch(AppData {
             output: RichText::new("".into()),
             output_attr: Arc::new(VecDeque::new()),
-            port_name: Arc::new("".to_string()),
+            port_name: "".to_string(),
             baud_rate: 115_200,
             to_write: Arc::new("".to_string()),
             data_bits: DruidDataBits::Eight,

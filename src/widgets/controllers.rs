@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::data::AppData;
 use crate::CLEAR_DATA;
 
@@ -9,9 +7,7 @@ use druid::{
 };
 use druid::{widget::Controller, FileDialogOptions, FileSpec};
 use druid::{ContextMenu, Data, MenuDesc, MenuItem};
-use druid::{Env, Event, EventCtx, HotKey, KbKey, LocalizedString, SysMods, UpdateCtx, Widget};
-
-use serialport;
+use druid::{Env, Event, EventCtx, HotKey, LocalizedString, SysMods, UpdateCtx, Widget};
 
 #[derive(Debug, Default)]
 pub struct ContextMenuController;
@@ -51,7 +47,7 @@ fn make_context_menu<T: Data>() -> MenuDesc<T> {
         ))
 }
 
-#[derive(Debug, Default)]
+/*#[derive(Debug, Default)]
 pub struct PortTextBoxController;
 
 impl<W: Widget<AppData>> Controller<AppData, W> for PortTextBoxController {
@@ -118,7 +114,7 @@ impl<W: Widget<AppData>> Controller<AppData, W> for PortTextBoxController {
     ) {
         child.update(ctx, old_data, data, env);
     }
-}
+}*/
 
 #[derive(Debug, Default)]
 pub struct TextBoxController;
