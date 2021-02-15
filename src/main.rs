@@ -40,7 +40,6 @@ pub enum GuiMessage {
     Open(OpenMessage),
     Close,
     Write(Vec<u8>),
-    Shutdown,
 }
 
 struct Delegate;
@@ -401,13 +400,11 @@ fn main() {
 
     let (sender, receiver) = mpsc::unbounded::<GuiMessage>();
 
-    let runtime_join_handle = thread::spawn(move || {
+    thread::spawn(move || {
         // Create the runtime
         let mut async_rt = Runtime::new().expect("runtime failed");
         async_rt.block_on(async_serial::serial_loop(&event_sink, receiver));
     });
-
-    let sender_shutdown = sender.clone();
 
     launcher
         .delegate(Delegate)
@@ -426,9 +423,4 @@ fn main() {
             status: "".to_string(),
         })
         .expect("launch failed");
-
-    sender_shutdown
-        .unbounded_send(GuiMessage::Shutdown)
-        .unwrap();
-    runtime_join_handle.join().unwrap();
 }

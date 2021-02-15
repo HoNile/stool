@@ -100,11 +100,10 @@ pub async fn serial_loop(
                                         }
                                     }
                                     Some(GuiMessage::Close) => break,
-                                    Some(GuiMessage::Shutdown) => {
+                                    None=> {
                                         to_shutdown = true;
                                         break;
                                     }
-                                    _ => (),
                                 };
                             }
                             data = receiver_data.next() => {
@@ -144,11 +143,10 @@ pub async fn serial_loop(
                         .unwrap();
                 }
             }
-            GuiMessage::Shutdown => break,
             GuiMessage::Write(_) => event_sink
                 .submit_command(IO_ERROR, "Cannot write data port not open", Target::Global)
                 .unwrap(),
-            _ => (),
+            GuiMessage::Close => (),
         }
     }
 }
