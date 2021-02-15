@@ -73,7 +73,7 @@ pub async fn serial_loop(
                     .await;
 
                     if to_shutdown {
-                        // open_loop may have catch that receiver_gui is done so we cannot await it anymore
+                        // open_loop may catch that receiver_gui is done so we cannot await it anymore
                         break;
                     }
                 } else {
@@ -116,7 +116,7 @@ async fn open_loop(
                             timeout: Duration::from_millis(1),
                         };
 
-                        if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings){
+                        if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings) {
                             port = port_reconnect;
                             let tmp = RawCodec::new().framed(port).split();
                             sender_data =  tmp.0;
@@ -127,10 +127,13 @@ async fn open_loop(
                     Some(GuiMessage::Write(data)) => {
                         let bytes = BytesMut::from(&data[..]);
                         if let Err(_) = sender_data.send(bytes).await {
-                            event_sink.submit_command(IO_ERROR, "Cannot write data on the port", Target::Global)
-                                      .unwrap();
+                            event_sink
+                                .submit_command(IO_ERROR, "Cannot write data on the port", Target::Global)
+                                .unwrap();
                         } else {
-                            event_sink.submit_command(IO_DATA, (ByteDirection::Out, data.clone()), Target::Global).unwrap();
+                            event_sink
+                                .submit_command(IO_DATA, (ByteDirection::Out, data.clone()), Target::Global)
+                                .unwrap();
                         }
                     }
                     Some(GuiMessage::Close) => break,
@@ -142,7 +145,9 @@ async fn open_loop(
             }
             data = receiver_data.next() => {
                 if let Some(Ok(data)) = data {
-                    event_sink.submit_command(IO_DATA, (ByteDirection::In, Vec::from(&data[..])), Target::Global).unwrap();
+                    event_sink
+                        .submit_command(IO_DATA, (ByteDirection::In, Vec::from(&data[..])), Target::Global)
+                        .unwrap();
                 } else {
                     if !error_reading {
                         event_sink
@@ -161,7 +166,7 @@ async fn open_loop(
                         timeout: Duration::from_millis(1),
                     };
 
-                    if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings){
+                    if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings) {
                         port = port_reconnect;
                         let tmp = RawCodec::new().framed(port).split();
                         sender_data =  tmp.0;
