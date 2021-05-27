@@ -44,6 +44,18 @@ impl Encoder for RawCodec {
     }
 }
 
+fn settings_from_config(config: &OpenMessage) -> SerialPortSettings {
+    SerialPortSettings {
+        baud_rate: config.baud_rate,
+        data_bits: DataBits::from(config.data_bits),
+        flow_control: FlowControl::from(config.flow_control),
+        parity: Parity::from(config.parity),
+        stop_bits: StopBits::from(config.stop_bits),
+        // timeout is not used cf tokio_serial
+        timeout: Duration::from_millis(1),
+    }
+}
+
 pub async fn serial_loop(
     event_sink: &ExtEventSink,
     mut receiver_gui: UnboundedReceiver<GuiMessage>,
@@ -51,28 +63,10 @@ pub async fn serial_loop(
     while let Some(msg_gui) = receiver_gui.next().await {
         match msg_gui {
             GuiMessage::Open(config) => {
-                let settings = SerialPortSettings {
-                    baud_rate: config.baud_rate,
-                    data_bits: DataBits::from(config.data_bits),
-                    flow_control: FlowControl::from(config.flow_control),
-                    parity: Parity::from(config.parity),
-                    stop_bits: StopBits::from(config.stop_bits),
-                    // timeout is not used cf tokio_serial
-                    timeout: Duration::from_millis(1),
-                };
-                let mut to_shutdown = false;
+                let settings = settings_from_config(&config);
 
                 if let Ok(port) = Serial::from_path(config.port_name.as_str(), &settings) {
-                    open_loop(
-                        event_sink,
-                        &mut receiver_gui,
-                        port,
-                        &mut to_shutdown,
-                        &config,
-                    )
-                    .await;
-
-                    if to_shutdown {
+                    if open_loop(event_sink, &mut receiver_gui, port, &config).await {
                         // open_loop may catch that receiver_gui is done so we cannot await it anymore
                         break;
                     }
@@ -94,9 +88,8 @@ async fn open_loop(
     event_sink: &ExtEventSink,
     receiver_gui: &mut UnboundedReceiver<GuiMessage>,
     mut port: Serial,
-    to_shutdown: &mut bool,
     config: &OpenMessage,
-) {
+) -> bool {
     let (mut sender_data, mut receiver_data) = RawCodec::new().framed(port).split();
 
     let mut error_reading = false;
@@ -106,15 +99,7 @@ async fn open_loop(
             msg_gui = receiver_gui.next() => {
                 match msg_gui {
                     Some(GuiMessage::Open(config)) => {
-                        let settings = SerialPortSettings {
-                            baud_rate: config.baud_rate,
-                            data_bits: DataBits::from(config.data_bits),
-                            flow_control: FlowControl::from(config.flow_control),
-                            parity: Parity::from(config.parity),
-                            stop_bits: StopBits::from(config.stop_bits),
-                            // timeout is not used cf tokio_serial
-                            timeout: Duration::from_millis(1),
-                        };
+                        let settings = settings_from_config(&config);
 
                         if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings) {
                             port = port_reconnect;
@@ -136,11 +121,8 @@ async fn open_loop(
                                 .unwrap();
                         }
                     }
-                    Some(GuiMessage::Close) => break,
-                    None=> {
-                        *to_shutdown = true;
-                        break;
-                    }
+                    Some(GuiMessage::Close) => return false,
+                    None => return true,
                 };
             }
             data = receiver_data.next() => {
@@ -156,15 +138,7 @@ async fn open_loop(
                         error_reading = true;
                     }
 
-                    let settings = SerialPortSettings {
-                        baud_rate: config.baud_rate,
-                        data_bits: DataBits::from(config.data_bits),
-                        flow_control: FlowControl::from(config.flow_control),
-                        parity: Parity::from(config.parity),
-                        stop_bits: StopBits::from(config.stop_bits),
-                        // timeout is not used cf tokio_serial
-                        timeout: Duration::from_millis(1),
-                    };
+                    let settings = settings_from_config(&config);
 
                     if let Ok(port_reconnect) = Serial::from_path(config.port_name.as_str(), &settings) {
                         port = port_reconnect;
