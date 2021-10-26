@@ -9,13 +9,12 @@ edition = "2018"
 [dependencies]
 druid = { git = "https://github.com/linebender/druid.git" }
 hex = "0.3.2"
-tokio = { version = "0.2.0", features = ["io-driver", "macros", "time"], default-features = false }
+tokio = { version = "1.8", features = ["rt", "macros"], default-features = false }
 futures = "0.3.1"
 futures-util = "0.3.4"
-tokio-util = { version = "0.2.0", features = ["codec"], default-features = false }
-bytes = "0.5"
-tokio-serial = "4.3.3"
-serialport = "3.3.0"
+tokio-util = { version = "0.6", features = ["codec"], default-features = false }
+bytes = "1.1"
+tokio-serial = "5.4.1"
 
 [profile.release]
 codegen-units = 1

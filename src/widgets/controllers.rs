@@ -8,10 +8,10 @@ use druid::{
     Command, Target,
 };
 use druid::{widget::Controller, FileDialogOptions, FileSpec};
-use druid::{ContextMenu, Data, MenuDesc, MenuItem};
+use druid::{Data, Menu, MenuItem};
 use druid::{Env, Event, EventCtx, HotKey, KbKey, LocalizedString, SysMods, UpdateCtx, Widget};
 
-use serialport;
+use tokio_serial;
 
 #[derive(Debug, Default)]
 pub struct ContextMenuController;
@@ -22,33 +22,36 @@ impl<T, W: Widget<T>> Controller<T, W> for ContextMenuController {
             Event::MouseDown(ref mouse) if mouse.button.is_right() => {
                 let mut pos = mouse.pos;
                 pos.x += 150.; // Note: 150 is the size from the left menu bar
-                let menu = ContextMenu::new(make_context_menu::<AppData>(), pos);
-                ctx.show_context_menu(menu);
+                ctx.show_context_menu(make_context_menu::<AppData>(), pos);
             }
             _ => child.event(ctx, event, data, env),
         }
     }
 }
 
-fn make_context_menu<T: Data>() -> MenuDesc<T> {
-    let save_dialog_options = FileDialogOptions::new()
-        .allowed_types(vec![FileSpec::new("Text file", &["txt"])])
-        .default_type(FileSpec::new("Text file", &["txt"]))
-        .default_name(String::from("MyFile.txt"))
-        .name_label("Target")
-        .title("Choose a target for this lovely file")
-        .button_text("Export");
+fn make_context_menu<T: Data>() -> Menu<T> {
+    Menu::empty()
+        .entry(
+            MenuItem::new(LocalizedString::new("Clear"))
+                .on_activate(|ctx, _data, _env| ctx.submit_command(CLEAR_DATA)),
+        )
+        .entry(
+            MenuItem::new(LocalizedString::new("Export")).on_activate(|ctx, _data, _env| {
+                let save_dialog_options = FileDialogOptions::new()
+                    .allowed_types(vec![FileSpec::new("Text file", &["txt"])])
+                    .default_type(FileSpec::new("Text file", &["txt"]))
+                    .default_name(String::from("MyFile.txt"))
+                    .name_label("Target")
+                    .title("Choose a target for this lovely file")
+                    .button_text("Export");
 
-    MenuDesc::empty()
-        .append(MenuItem::new(LocalizedString::new("Clear"), CLEAR_DATA))
-        .append(MenuItem::new(
-            LocalizedString::new("Export"),
-            Command::new(
-                druid::commands::SHOW_SAVE_PANEL,
-                save_dialog_options.clone(),
-                Target::Auto,
-            ),
-        ))
+                ctx.submit_command(Command::new(
+                    druid::commands::SHOW_SAVE_PANEL,
+                    save_dialog_options,
+                    Target::Auto,
+                ))
+            }),
+        )
 }
 
 #[derive(Debug, Default)]
@@ -65,7 +68,7 @@ impl<W: Widget<AppData>> Controller<AppData, W> for PortTextBoxController {
     ) {
         match event {
             Event::MouseDown(_) => {
-                let mut available_ports = serialport::available_ports()
+                let mut available_ports = tokio_serial::available_ports()
                     .unwrap()
                     .iter()
                     .map(|pinfo| pinfo.port_name.clone())
@@ -76,7 +79,7 @@ impl<W: Widget<AppData>> Controller<AppData, W> for PortTextBoxController {
             }
             Event::KeyUp(key_event) => match key_event {
                 k_e if (HotKey::new(None, KbKey::Tab)).matches(k_e) => {
-                    let mut available_ports = serialport::available_ports()
+                    let mut available_ports = tokio_serial::available_ports()
                         .unwrap()
                         .iter()
                         .map(|pinfo| pinfo.port_name.clone())

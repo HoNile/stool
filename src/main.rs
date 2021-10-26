@@ -11,6 +11,7 @@ use crate::data::{
     Protocol,
 };
 use crate::ui::make_ui;
+use bytes::Bytes;
 use druid::text::{Attribute, RichText};
 use druid::{commands, piet::TextStorage, AppDelegate, Command, DelegateCtx, Handled, Target};
 use druid::{
@@ -20,7 +21,7 @@ use druid::{
 use futures::channel::mpsc;
 use std::collections::VecDeque;
 use std::{ops::Range, sync::Arc, thread};
-use tokio::runtime::Runtime;
+use tokio::runtime::Builder;
 
 const OPEN_PORT: Selector = Selector::new("event.open-port");
 const CLOSE_PORT: Selector = Selector::new("event.close-port");
@@ -39,7 +40,7 @@ pub enum ByteDirection {
 pub enum GuiMessage {
     Open(OpenMessage),
     Close,
-    Write(Vec<u8>),
+    Write(Bytes),
 }
 
 struct Delegate;
@@ -73,7 +74,7 @@ fn get_tag_color(tag: OutputTag) -> Color {
 }
 
 fn display_raw(
-    io_data: &(ByteDirection, Vec<u8>),
+    io_data: &(ByteDirection, Bytes),
     output: &mut RichText,
     mut output_attr: &mut Arc<VecDeque<(Range<usize>, OutputTag)>>,
 ) {
@@ -207,7 +208,7 @@ fn display_raw(
 }
 
 fn display_text(
-    io_data: &(ByteDirection, Vec<u8>),
+    io_data: &(ByteDirection, Bytes),
     output: &mut RichText,
     mut output_attr: &mut Arc<VecDeque<(Range<usize>, OutputTag)>>,
 ) {
@@ -346,7 +347,7 @@ impl Widget<AppData> for EventHandler {
                     let bytes: String = data.to_write.as_str().split_ascii_whitespace().collect();
                     if let Ok(bytes) = hex::decode(bytes) {
                         data.sender
-                            .unbounded_send(GuiMessage::Write(bytes))
+                            .unbounded_send(GuiMessage::Write(bytes.into()))
                             .unwrap();
                     } else {
                         data.status = "Incorrect data doesn't respect protocol format".to_string();
@@ -355,7 +356,7 @@ impl Widget<AppData> for EventHandler {
                 Protocol::Text => {
                     let bytes = data.to_write.as_bytes().to_owned();
                     data.sender
-                        .unbounded_send(GuiMessage::Write(bytes))
+                        .unbounded_send(GuiMessage::Write(bytes.into()))
                         .unwrap();
                 }
             },
@@ -389,10 +390,10 @@ impl Widget<AppData> for EventHandler {
 }
 
 fn main() {
-    let window = WindowDesc::new(make_ui)
+    let window = WindowDesc::new(make_ui())
         .title(LocalizedString::new("Serial tool").with_placeholder("Stool"))
-        .with_min_size((164., 765.))
-        .window_size((500., 765.));
+        .with_min_size((164., 775.))
+        .window_size((500., 775.));
 
     let launcher = AppLauncher::with_window(window);
 
@@ -402,7 +403,11 @@ fn main() {
 
     thread::spawn(move || {
         // Create the runtime
-        let mut async_rt = Runtime::new().expect("runtime failed");
+
+        let async_rt = Builder::new_current_thread()
+            .enable_io()
+            .build()
+            .expect("runtime failed");
         async_rt.block_on(async_serial::serial_loop(&event_sink, receiver));
     });
 

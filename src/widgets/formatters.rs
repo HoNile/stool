@@ -1,7 +1,7 @@
 //! Implementations of the [`druid::text::Formatter`] trait.
 
-use druid::text::format::{Formatter, Validation, ValidationError};
 use druid::text::Selection;
+use druid::text::{Formatter, Validation, ValidationError};
 
 /// A formatter that can display numeric values.
 pub struct NumericFormatter;
