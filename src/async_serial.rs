@@ -1,6 +1,6 @@
 use crate::{data::OpenMessage, ByteDirection, GuiMessage};
 use bytes::{BufMut, Bytes, BytesMut};
-use druid::{ExtEventSink, Selector, Target};
+use druid::{ExtEventError, ExtEventSink, Selector, Target};
 use futures::{channel::mpsc::UnboundedReceiver, stream::StreamExt};
 use futures_util::sink::SinkExt;
 use std::io::Error;
@@ -34,12 +34,12 @@ impl Decoder for RawCodec {
     }
 }
 
-impl Encoder<BytesMut> for RawCodec {
+impl Encoder<Bytes> for RawCodec {
     type Error = std::io::Error;
 
-    fn encode(&mut self, tc_data: BytesMut, buf: &mut BytesMut) -> Result<(), Error> {
-        buf.reserve(tc_data.len());
-        buf.put_slice(&tc_data[..]);
+    fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), Error> {
+        buf.reserve(data.len());
+        buf.put(data);
 
         Ok(())
     }
@@ -57,28 +57,29 @@ fn port_from_config(config: &OpenMessage) -> SerialPortBuilder {
 pub async fn serial_loop(
     event_sink: &ExtEventSink,
     mut receiver_gui: UnboundedReceiver<GuiMessage>,
-) {
+) -> Result<(), ExtEventError> {
     while let Some(msg_gui) = receiver_gui.next().await {
         match msg_gui {
             GuiMessage::Open(config) => {
                 let build_port = port_from_config(&config);
                 if let Ok(port) = build_port.open_native_async() {
-                    if open_loop(event_sink, &mut receiver_gui, port, &config).await {
+                    if open_loop(event_sink, &mut receiver_gui, port, &config).await? {
                         // open_loop may catch that receiver_gui is done so we cannot await it anymore
                         break;
                     }
                 } else {
-                    event_sink
-                        .submit_command(IO_ERROR, "Cannot open the port", Target::Global)
-                        .unwrap();
+                    event_sink.submit_command(IO_ERROR, "Cannot open the port", Target::Global)?;
                 }
             }
-            GuiMessage::Write(_) => event_sink
-                .submit_command(IO_ERROR, "Cannot write data port not open", Target::Global)
-                .unwrap(),
+            GuiMessage::Write(_) => event_sink.submit_command(
+                IO_ERROR,
+                "Cannot write data port not open",
+                Target::Global,
+            )?,
             GuiMessage::Close => (),
         }
     }
+    Ok(())
 }
 
 async fn open_loop(
@@ -86,7 +87,7 @@ async fn open_loop(
     receiver_gui: &mut UnboundedReceiver<GuiMessage>,
     mut port: SerialStream,
     config: &OpenMessage,
-) -> bool {
+) -> Result<bool, ExtEventError> {
     let (mut sender_data, mut receiver_data) = RawCodec::new().framed(port).split();
 
     let mut error_reading = false;
@@ -107,31 +108,28 @@ async fn open_loop(
                         };
                     }
                     Some(GuiMessage::Write(data)) => {
-                        let bytes = BytesMut::from(&data[..]);
-                        if let Err(_) = sender_data.send(bytes).await {
+                        if let Err(_) = sender_data.send(data.clone()).await {
                             event_sink
-                                .submit_command(IO_ERROR, "Cannot write data on the port", Target::Global)
-                                .unwrap();
+                                .submit_command(IO_ERROR, "Cannot write data on the port", Target::Global)?;
                         } else {
                             event_sink
-                                .submit_command(IO_DATA, (ByteDirection::Out, data.clone()), Target::Global)
-                                .unwrap();
+                                .submit_command(IO_DATA, (ByteDirection::Out, data), Target::Global)?;
                         }
                     }
-                    Some(GuiMessage::Close) => return false,
-                    None => return true,
+                    Some(GuiMessage::Close) => return Ok(false),
+                    None => return Ok(true),
                 };
             }
             data = receiver_data.next() => {
                 if let Some(Ok(data)) = data {
                     event_sink
                         .submit_command(IO_DATA, (ByteDirection::In, data.freeze()), Target::Global)
-                        .unwrap();
+                        ?;
                 } else {
                     if !error_reading {
                         event_sink
                             .submit_command(IO_ERROR, "Error while reading data", Target::Global)
-                            .unwrap();
+                            ?;
                         error_reading = true;
                     }
 

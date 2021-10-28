@@ -408,7 +408,7 @@ fn main() {
             .enable_io()
             .build()
             .expect("runtime failed");
-        async_rt.block_on(async_serial::serial_loop(&event_sink, receiver));
+        let _ = async_rt.block_on(async_serial::serial_loop(&event_sink, receiver));
     });
 
     launcher
