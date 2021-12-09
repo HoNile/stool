@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::data::AppData;
-use crate::CLEAR_DATA;
+use crate::event::CLEAR_DATA;
 
 use druid::{
     commands::{COPY, CUT, PASTE},

@@ -1,3 +1,4 @@
+use crate::event::{EventHandler, CLOSE_PORT, OPEN_PORT, WRITE_PORT};
 use crate::widgets::NumericFormatter;
 use crate::{
     data::{
@@ -6,7 +7,6 @@ use crate::{
     },
     widgets::{ContextMenuController, PortTextBoxController, TextBoxController},
 };
-use crate::{EventHandler, CLOSE_PORT, OPEN_PORT, WRITE_PORT};
 
 use druid::widget::{
     Button, CrossAxisAlignment, Flex, Label, LineBreaking, RadioGroup, RawLabel, Scroll, SizedBox,

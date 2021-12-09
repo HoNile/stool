@@ -1,4 +1,4 @@
-use crate::{data::OpenMessage, ByteDirection, GuiMessage};
+use crate::{data::OpenMessage, GuiMessage};
 use bytes::{BufMut, Bytes, BytesMut};
 use druid::{ExtEventError, ExtEventSink, Selector, Target};
 use futures::{channel::mpsc::UnboundedReceiver, stream::StreamExt};
@@ -12,6 +12,11 @@ use tokio_util::codec::{Decoder, Encoder};
 pub const IO_DATA: Selector<(ByteDirection, Bytes)> = Selector::new("event.io-data");
 pub const IO_ERROR: Selector<&str> = Selector::new("event.io-error");
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ByteDirection {
+    Out,
+    In,
+}
 pub struct RawCodec;
 
 impl RawCodec {
@@ -25,9 +30,8 @@ impl Decoder for RawCodec {
     type Error = std::io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<BytesMut>, Error> {
-        let data = buf.split_to(buf.len());
-        if data.len() > 0 {
-            Ok(Some(data))
+        if buf.len() > 0 {
+            Ok(Some(buf.clone()))
         } else {
             Ok(None)
         }
@@ -55,7 +59,7 @@ fn port_from_config(config: &OpenMessage) -> SerialPortBuilder {
 }
 
 pub async fn serial_loop(
-    event_sink: &ExtEventSink,
+    event_sink: ExtEventSink,
     mut receiver_gui: UnboundedReceiver<GuiMessage>,
 ) -> Result<(), ExtEventError> {
     while let Some(msg_gui) = receiver_gui.next().await {
@@ -63,10 +67,7 @@ pub async fn serial_loop(
             GuiMessage::Open(config) => {
                 let build_port = port_from_config(&config);
                 if let Ok(port) = build_port.open_native_async() {
-                    if open_loop(event_sink, &mut receiver_gui, port, &config).await? {
-                        // open_loop may catch that receiver_gui is done so we cannot await it anymore
-                        break;
-                    }
+                    open_loop(&event_sink, &mut receiver_gui, port, &config).await?;
                 } else {
                     event_sink.submit_command(IO_ERROR, "Cannot open the port", Target::Global)?;
                 }
@@ -87,7 +88,7 @@ async fn open_loop(
     receiver_gui: &mut UnboundedReceiver<GuiMessage>,
     mut port: SerialStream,
     config: &OpenMessage,
-) -> Result<bool, ExtEventError> {
+) -> Result<(), ExtEventError> {
     let (mut sender_data, mut receiver_data) = RawCodec::new().framed(port).split();
 
     let mut error_reading = false;
@@ -99,13 +100,15 @@ async fn open_loop(
                     Some(GuiMessage::Open(config)) => {
                         let build_port = port_from_config(&config);
 
-                        if let Ok(port_reconnect) = build_port.open_native_async() {
-                            port = port_reconnect;
+                        if let Ok(new_port) = build_port.open_native_async() {
+                            port = new_port;
                             let tmp = RawCodec::new().framed(port).split();
                             sender_data =  tmp.0;
                             receiver_data = tmp.1;
                             error_reading = false;
-                        };
+                        } else {
+                            event_sink.submit_command(IO_ERROR, "Cannot open the port", Target::Global)?;
+                        }
                     }
                     Some(GuiMessage::Write(data)) => {
                         if let Err(_) = sender_data.send(data.clone()).await {
@@ -116,8 +119,8 @@ async fn open_loop(
                                 .submit_command(IO_DATA, (ByteDirection::Out, data), Target::Global)?;
                         }
                     }
-                    Some(GuiMessage::Close) => return Ok(false),
-                    None => return Ok(true),
+                    Some(GuiMessage::Close) => return Ok(()),
+                    None => return Err(ExtEventError),
                 };
             }
             data = receiver_data.next() => {
