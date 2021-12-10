@@ -62,6 +62,8 @@ pub async fn serial_loop(
     event_sink: ExtEventSink,
     mut receiver_gui: UnboundedReceiver<GuiMessage>,
 ) -> Result<(), ExtEventError> {
+    let send_err_gui = |data| event_sink.submit_command(IO_ERROR, data, Target::Global);
+
     while let Some(msg_gui) = receiver_gui.next().await {
         match msg_gui {
             GuiMessage::Open(config) => {
@@ -69,14 +71,10 @@ pub async fn serial_loop(
                 if let Ok(port) = build_port.open_native_async() {
                     open_loop(&event_sink, &mut receiver_gui, port, &config).await?;
                 } else {
-                    event_sink.submit_command(IO_ERROR, "Cannot open the port", Target::Global)?;
+                    send_err_gui("Cannot open the port")?;
                 }
             }
-            GuiMessage::Write(_) => event_sink.submit_command(
-                IO_ERROR,
-                "Cannot write data port not open",
-                Target::Global,
-            )?,
+            GuiMessage::Write(_) => send_err_gui("Cannot write data port not open")?,
             GuiMessage::Close => (),
         }
     }
@@ -89,8 +87,9 @@ async fn open_loop(
     mut port: SerialStream,
     config: &OpenMessage,
 ) -> Result<(), ExtEventError> {
+    let send_err_gui = |data| event_sink.submit_command(IO_ERROR, data, Target::Global);
+    let send_data_gui = |dir, data| event_sink.submit_command(IO_DATA, (dir, data), Target::Global);
     let (mut sender_data, mut receiver_data) = RawCodec::new().framed(port).split();
-
     let mut error_reading = false;
 
     loop {
@@ -107,16 +106,14 @@ async fn open_loop(
                             receiver_data = tmp.1;
                             error_reading = false;
                         } else {
-                            event_sink.submit_command(IO_ERROR, "Cannot open the port", Target::Global)?;
+                            send_err_gui( "Cannot open the port")?;
                         }
                     }
                     Some(GuiMessage::Write(data)) => {
                         if let Err(_) = sender_data.send(data.clone()).await {
-                            event_sink
-                                .submit_command(IO_ERROR, "Cannot write data on the port", Target::Global)?;
+                            send_err_gui( "Cannot write data on the port")?;
                         } else {
-                            event_sink
-                                .submit_command(IO_DATA, (ByteDirection::Out, data), Target::Global)?;
+                            send_data_gui(ByteDirection::Out, data)?;
                         }
                     }
                     Some(GuiMessage::Close) => return Ok(()),
@@ -125,19 +122,14 @@ async fn open_loop(
             }
             data = receiver_data.next() => {
                 if let Some(Ok(data)) = data {
-                    event_sink
-                        .submit_command(IO_DATA, (ByteDirection::In, data.freeze()), Target::Global)
-                        ?;
+                    send_data_gui(ByteDirection::In, data.freeze())?;
                 } else {
                     if !error_reading {
-                        event_sink
-                            .submit_command(IO_ERROR, "Error while reading data", Target::Global)
-                            ?;
+                        send_err_gui( "Error while reading data")?;
                         error_reading = true;
                     }
 
                     let build_port = port_from_config(&config);
-
                     if let Ok(port_reconnect) = build_port.open_native_async() {
                         port = port_reconnect;
                         let tmp = RawCodec::new().framed(port).split();
