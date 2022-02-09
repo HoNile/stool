@@ -106,12 +106,12 @@ async fn open_loop(
                             receiver_data = tmp.1;
                             error_reading = false;
                         } else {
-                            send_err_gui( "Cannot open the port")?;
+                            send_err_gui("Cannot open the port")?;
                         }
                     }
                     Some(GuiMessage::Write(data)) => {
                         if let Err(_) = sender_data.send(data.clone()).await {
-                            send_err_gui( "Cannot write data on the port")?;
+                            send_err_gui("Cannot write data on the port")?;
                         } else {
                             send_data_gui(ByteDirection::Out, data)?;
                         }
@@ -125,7 +125,7 @@ async fn open_loop(
                     send_data_gui(ByteDirection::In, data.freeze())?;
                 } else {
                     if !error_reading {
-                        send_err_gui( "Error while reading data")?;
+                        send_err_gui("Error while reading data")?;
                         error_reading = true;
                     }
 
