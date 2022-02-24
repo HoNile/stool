@@ -84,7 +84,7 @@ pub async fn serial_loop(
 async fn open_loop(
     event_sink: &ExtEventSink,
     receiver_gui: &mut UnboundedReceiver<GuiMessage>,
-    mut port: SerialStream,
+    port: SerialStream,
     config: &OpenMessage,
 ) -> Result<(), ExtEventError> {
     let send_err_gui = |data| event_sink.submit_command(IO_ERROR, data, Target::Global);
@@ -99,11 +99,8 @@ async fn open_loop(
                     Some(GuiMessage::Open(config)) => {
                         let build_port = port_from_config(&config);
 
-                        if let Ok(new_port) = build_port.open_native_async() {
-                            port = new_port;
-                            let tmp = RawCodec::new().framed(port).split();
-                            sender_data =  tmp.0;
-                            receiver_data = tmp.1;
+                        if let Ok(port) = build_port.open_native_async() {
+                            (sender_data, receiver_data) = RawCodec::new().framed(port).split();
                             error_reading = false;
                         } else {
                             send_err_gui("Cannot open the port")?;
@@ -130,11 +127,8 @@ async fn open_loop(
                     }
 
                     let build_port = port_from_config(&config);
-                    if let Ok(port_reconnect) = build_port.open_native_async() {
-                        port = port_reconnect;
-                        let tmp = RawCodec::new().framed(port).split();
-                        sender_data =  tmp.0;
-                        receiver_data = tmp.1;
+                    if let Ok(port) = build_port.open_native_async() {
+                        (sender_data, receiver_data) = RawCodec::new().framed(port).split();
                         error_reading = false;
                     };
                 }
